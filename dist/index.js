@@ -1,0 +1,121 @@
+/**
+ * rehype-perfect-code-blocks — rehype plugin entry.
+ *
+ * Usage (standalone):
+ *
+ *   import { rehypePerfectCodeBlocks } from 'rehype-perfect-code-blocks';
+ *
+ *   unified()
+ *     .use(remarkParse)
+ *     .use(remarkPreserveCodeMeta)
+ *     .use(remarkRehype)
+ *     .use(rehypePerfectCodeBlocks, { decorations: true, copyButton: true })
+ *     .use(rehypeStringify)
+ *     .process(markdown);
+ *
+ * For Astro, use `rehype-perfect-code-blocks/astro` instead — it wraps this
+ * plugin with style/script injection and automatic Shiki integration.
+ */
+import { rehypePerfectCodeBlocks as transformer } from './transformer.js';
+import { runShikiOnRawBlocks } from './shiki.js';
+import { remarkPreserveCodeMeta } from './remark.js';
+export { remarkPreserveCodeMeta };
+export const rehypePerfectCodeBlocks = (options = {}) => {
+    const engine = options.engine ?? 'auto';
+    const opts = options;
+    return async (tree) => {
+        // 1. If engine is 'shiki' or 'auto' fallback, tokenize raw <pre><code> first.
+        //    This also passes `transformers` and `meta: { __raw }` to Shiki so the
+        //    official @shikijs/transformers (diff, focus, highlight, error, word)
+        //    work out of the box.
+        if (engine === 'shiki' || engine === 'auto') {
+            await runShikiOnRawBlocks(tree, resolveDefaults(opts));
+        }
+        // 'passthrough' → do nothing, assume caller has tokenized.
+        // 2. Wrap each <pre> in a styled <figure>.
+        const transform = transformer(opts);
+        await transform(tree);
+    };
+};
+export default rehypePerfectCodeBlocks;
+/**
+ * Resolve defaults WITHOUT using TS's `Required<...>` (which forces every
+ * field to be non-undefined, including function hooks that should default
+ * to no-op). This preserves the runtime-friendly defaults.
+ */
+function resolveDefaults(opts) {
+    const userShiki = opts.shiki ?? {};
+    const userCopyButton = opts.copyButton;
+    let copyButtonLabel = 'copy';
+    let copyButtonDoneLabel = 'copied!';
+    let resolvedCopyButton = true;
+    if (typeof userCopyButton === 'object' && userCopyButton !== null) {
+        resolvedCopyButton = {
+            visibility: 'always',
+            feedbackDuration: 1600,
+            copyIcon: undefined,
+            successIcon: undefined,
+            label: 'copy',
+            doneLabel: 'copied!',
+            ...userCopyButton,
+        };
+        copyButtonLabel = resolvedCopyButton.label ?? 'copy';
+        copyButtonDoneLabel = resolvedCopyButton.doneLabel ?? 'copied!';
+    }
+    else {
+        resolvedCopyButton = userCopyButton ?? true;
+        copyButtonLabel = opts.copyButtonLabel ?? 'copy';
+        copyButtonDoneLabel = opts.copyButtonDoneLabel ?? 'copied!';
+    }
+    return {
+        decorations: opts.decorations ?? true,
+        showLanguage: opts.showLanguage ?? true,
+        copyButton: resolvedCopyButton,
+        copyButtonLabel,
+        copyButtonDoneLabel,
+        lineNumbers: opts.lineNumbers ?? 'auto',
+        titleBar: opts.titleBar ?? 'auto',
+        lineNumbersStart: opts.lineNumbersStart ?? 1,
+        highlight: opts.highlight ?? true,
+        diff: opts.diff ?? true,
+        focus: opts.focus ?? true,
+        errorLevels: opts.errorLevels ?? true,
+        wrap: opts.wrap ?? false,
+        collapseAfter: opts.collapseAfter ?? null,
+        showWhitespace: opts.showWhitespace ?? false,
+        indentGuides: opts.indentGuides ?? false,
+        caption: opts.caption ?? true,
+        engine: opts.engine ?? 'auto',
+        shiki: {
+            theme: { light: 'github-light', dark: 'github-dark' },
+            langs: [],
+            transformers: [],
+            ...userShiki,
+        },
+        keepBackground: opts.keepBackground ?? false,
+        customNotations: opts.customNotations ?? {},
+        magicComments: opts.magicComments ?? [
+            {
+                className: 'pcb__line--hl',
+                line: 'highlight-next-line',
+                block: { start: 'highlight-start', end: 'highlight-end' },
+            },
+        ],
+        inlineCode: opts.inlineCode ?? false,
+        inlineDefaultLang: opts.inlineDefaultLang ?? '',
+        tokensMap: opts.tokensMap ?? {},
+        terminalLangs: opts.terminalLangs ?? ['sh', 'bash', 'zsh', 'shell', 'console', 'powershell', 'bat', 'cmd'],
+        extractFileNameFromCode: opts.extractFileNameFromCode ?? false,
+        filterMetaString: opts.filterMetaString ?? ((s) => s),
+        onVisitLine: opts.onVisitLine ?? (() => { }),
+        onVisitHighlightedLine: opts.onVisitHighlightedLine ?? (() => { }),
+        onVisitHighlightedChars: opts.onVisitHighlightedChars ?? (() => { }),
+        onVisitTitle: opts.onVisitTitle ?? (() => { }),
+        onVisitCaption: opts.onVisitCaption ?? (() => { }),
+        preset: opts.preset ?? 'default',
+        injectStyles: opts.injectStyles ?? true,
+        theme: opts.theme ?? 'auto',
+        inline: opts.inline ?? false,
+    };
+}
+//# sourceMappingURL=index.js.map

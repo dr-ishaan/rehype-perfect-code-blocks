@@ -1,0 +1,560 @@
+/* ============================================================
+   rehype-perfect-code-blocks — default stylesheet v2
+   - Row-based DOM: each line = [gutter-cell | code-cell]
+   - Highlight bands span BOTH gutter and code (GitHub-style)
+   - Accent bar sits on the gutter cell, never overlapping code
+   - Solid gutter background hides code scrolling behind it
+   - All defaults use :where() for zero specificity so user CSS wins
+   - Every visual property is a --pcb-* CSS variable
+   ============================================================ */
+
+:where(.pcb) {
+  /* Surface */
+  --pcb-bg: #000000;
+  --pcb-bg-header: #0a0a0a;
+  --pcb-bg-gutter: var(--pcb-bg);
+  --pcb-border: #1f2329;
+  --pcb-radius: 12px;
+
+  /* Typography */
+  --pcb-font-mono: 'JetBrains Mono', 'Fira Code', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --pcb-font-size: 0.875rem;
+  --pcb-line-height: 1.65;
+  --pcb-bar-font: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --pcb-bar-font-size: 0.75rem;
+
+  /* Text */
+  --pcb-text: #e6edf3;
+  --pcb-text-muted: #6e7681;
+  --pcb-text-bar: #8b949e;
+
+  /* Accent */
+  --pcb-accent: #2ea043;
+
+  /* Line states — backgrounds span both gutter and code */
+  --pcb-line-highlight: rgba(46, 160, 67, 0.18);
+  --pcb-line-add: rgba(46, 160, 67, 0.22);
+  --pcb-line-del: rgba(248, 81, 73, 0.22);
+  --pcb-line-focus: rgba(56, 139, 253, 0.18);
+  --pcb-line-error: rgba(248, 81, 73, 0.25);
+  --pcb-line-warning: rgba(187, 128, 9, 0.25);
+  --pcb-line-dim: 0.4;
+
+  /* Accent bar (left edge of highlighted lines) */
+  --pcb-bar-width: 3px;
+  --pcb-bar-color-hl: var(--pcb-accent);
+  --pcb-bar-color-add: #2ea043;
+  --pcb-bar-color-del: #f85149;
+  --pcb-bar-color-focus: #58a6ff;
+  --pcb-bar-color-error: #f85149;
+  --pcb-bar-color-warning: #bb8009;
+
+  /* Word highlight */
+  --pcb-word-bg: rgba(187, 128, 9, 0.30);
+  --pcb-word-bg-id: rgba(56, 139, 253, 0.30);
+
+  /* Whitespace + indent guides */
+  --pcb-whitespace: rgba(127, 127, 127, 0.35);
+  --pcb-indent-guide: rgba(127, 127, 127, 0.18);
+
+  /* Caption */
+  --pcb-caption-color: #8b949e;
+  --pcb-caption-bg: #0a0a0a;
+  --pcb-caption-pad: 0.6rem 1rem;
+
+  /* Spacing */
+  --pcb-pad-x: 1rem;
+  --pcb-pad-y: 1rem;
+  --pcb-gutter-pad-left: 0.05rem;
+  --pcb-gutter-pad-right: 0.4rem;
+  --pcb-gutter-min: 0;
+
+  margin: 1.5rem 0;
+  background: var(--pcb-bg);
+  border: 1px solid var(--pcb-border);
+  border-radius: var(--pcb-radius);
+  overflow: hidden;
+  font-family: var(--pcb-font-mono);
+  font-size: var(--pcb-font-size);
+  color: var(--pcb-text);
+  line-height: var(--pcb-line-height);
+}
+
+/* ---------- Theme resolution ----------
+   Priority (highest first):
+     1. [data-theme="light"] on <html> or .pcb → force light
+     2. [data-theme="dark"] on <html> or .pcb → force dark
+     3. prefers-color-scheme media query → auto
+   The dark defaults on :where(.pcb) are the base; light overrides
+   only apply when light mode is explicitly chosen or auto-detected. */
+
+/* Auto light mode — only when no explicit data-theme is set */
+@media (prefers-color-scheme: light) {
+  :where(html:not([data-theme="dark"])) :where(.pcb:not([data-theme="dark"])) {
+    --pcb-bg: #ffffff;
+    --pcb-bg-header: #f6f8fa;
+    --pcb-bg-gutter: var(--pcb-bg);
+    --pcb-border: #d0d7de;
+    --pcb-text: #1f2328;
+    --pcb-text-muted: #636c76;
+    --pcb-text-bar: #656d76;
+    --pcb-accent: #1a7f37;
+    --pcb-line-highlight: rgba(46, 160, 67, 0.18);
+    --pcb-line-add: rgba(46, 160, 67, 0.20);
+    --pcb-line-del: rgba(248, 81, 73, 0.20);
+    --pcb-line-focus: rgba(84, 174, 255, 0.18);
+    --pcb-line-error: rgba(248, 81, 73, 0.20);
+    --pcb-line-warning: rgba(187, 128, 9, 0.22);
+    --pcb-caption-bg: #f6f8fa;
+  }
+}
+
+/* Manual light override */
+:where(html[data-theme="light"]) .pcb,
+:where(.pcb[data-theme="light"]) {
+  --pcb-bg: #ffffff;
+  --pcb-bg-header: #f6f8fa;
+  --pcb-bg-gutter: var(--pcb-bg);
+  --pcb-border: #d0d7de;
+  --pcb-text: #1f2328;
+  --pcb-text-muted: #636c76;
+  --pcb-text-bar: #656d76;
+  --pcb-accent: #1a7f37;
+  --pcb-line-highlight: rgba(46, 160, 67, 0.18);
+  --pcb-line-add: rgba(46, 160, 67, 0.20);
+  --pcb-line-del: rgba(248, 81, 73, 0.20);
+  --pcb-line-focus: rgba(84, 174, 255, 0.18);
+  --pcb-line-error: rgba(248, 81, 73, 0.20);
+  --pcb-line-warning: rgba(187, 128, 9, 0.22);
+  --pcb-caption-bg: #f6f8fa;
+}
+
+/* Manual dark override (takes precedence even in light OS theme) */
+:where(html[data-theme="dark"]) .pcb,
+:where(.pcb[data-theme="dark"]) {
+  --pcb-bg: #000000;
+  --pcb-bg-header: #0a0a0a;
+  --pcb-bg-gutter: var(--pcb-bg);
+  --pcb-border: #1f2329;
+  --pcb-text: #e6edf3;
+  --pcb-text-muted: #6e7681;
+  --pcb-text-bar: #8b949e;
+  --pcb-accent: #2ea043;
+  --pcb-line-highlight: rgba(46, 160, 67, 0.18);
+  --pcb-line-add: rgba(46, 160, 67, 0.22);
+  --pcb-line-del: rgba(248, 81, 73, 0.22);
+  --pcb-line-focus: rgba(56, 139, 253, 0.18);
+  --pcb-line-error: rgba(248, 81, 73, 0.25);
+  --pcb-line-warning: rgba(187, 128, 9, 0.25);
+  --pcb-caption-bg: #0a0a0a;
+}
+
+/* ---------- Header bar ---------- */
+:where(.pcb__bar) {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem 0.5rem 1rem;
+  background: var(--pcb-bg-header);
+  border-bottom: 1px solid var(--pcb-border);
+  font-family: var(--pcb-bar-font);
+  font-size: var(--pcb-bar-font-size);
+  color: var(--pcb-text-bar);
+}
+:where(.pcb__title) {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+:where(.pcb__dots) {
+  display: flex;
+  gap: 6px;
+  margin-right: 0.25rem;
+  flex-shrink: 0;
+}
+:where(.pcb__dots span) {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--pcb-border);
+}
+:where(.pcb__lang) {
+  padding: 0.15rem 0.5rem;
+  border-radius: 6px;
+  background: rgba(127, 127, 127, 0.18);
+  color: var(--pcb-text-bar);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+:where(.pcb__copy) {
+  appearance: none;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--pcb-text-bar);
+  cursor: pointer;
+  padding: 0.25rem 0.5rem;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font: inherit;
+  font-size: 0.6875rem;
+  flex-shrink: 0;
+}
+:where(.pcb__copy:hover) {
+  background: rgba(127, 127, 127, 0.18);
+  color: var(--pcb-text);
+}
+:where(.pcb__copy:focus-visible) {
+  outline: 2px solid var(--pcb-accent);
+  outline-offset: 2px;
+}
+:where(.pcb__copy--done) { color: #2ea043; }
+:where(.pcb__copy svg) { width: 13px; height: 13px; }
+
+/* ---------- Body: scrollable container ---------- */
+:where(.pcb__body) {
+  overflow-x: auto;
+  background: var(--pcb-bg);
+}
+:where(.pcb__body::-webkit-scrollbar) { height: 8px; }
+:where(.pcb__body::-webkit-scrollbar-track) { background: var(--pcb-bg); }
+:where(.pcb__body::-webkit-scrollbar-thumb) {
+  background: var(--pcb-border);
+  border-radius: 4px;
+}
+:where(.pcb__body::-webkit-scrollbar-thumb:hover) {
+  background: #30363d;
+}
+
+/* ---------- <pre>: no padding (padding is on .pcb__ln and .pcb__code) ---------- */
+:where(.pcb pre) {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  overflow: visible;
+}
+:where(.pcb code) {
+  font: inherit;
+  color: inherit;
+  background: none;
+  display: block;
+}
+
+/* ---------- Row-based line grid ----------
+   Each <span class="pcb__line"> uses display:contents so its children
+   (.pcb__ln and .pcb__code) become grid items in the <code> container. */
+:where(.pcb code[data-line-numbers]) {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: stretch;
+}
+:where(.pcb__line) {
+  display: contents;
+}
+
+/* Gutter cell (line number) */
+:where(.pcb__ln) {
+  user-select: none;
+  pointer-events: none;
+  padding: 0 var(--pcb-gutter-pad-right) 0 var(--pcb-gutter-pad-left);
+  text-align: right;
+  color: var(--pcb-text-muted);
+  position: sticky;
+  left: 0;
+  background: var(--pcb-bg-gutter);
+  min-width: var(--pcb-gutter-min);
+  white-space: nowrap;
+  z-index: 1;
+}
+
+/* Code cell */
+:where(.pcb__code) {
+  display: block;
+  padding: 0 var(--pcb-pad-x) 0 0;
+  white-space: pre;
+}
+
+/* When line numbers are OFF, .pcb__line is a simple block */
+:where(.pcb code:not([data-line-numbers]) .pcb__line) {
+  display: block;
+}
+:where(.pcb code:not([data-line-numbers]) .pcb__code) {
+  padding: 0 var(--pcb-pad-x);
+}
+
+/* Vertical padding: applied to the whole <code> via top/bottom padding
+   on the first/last line's cells. We use a simpler approach: padding
+   on the <pre> wrapper via the body's first/last child. */
+:where(.pcb__body) {
+  padding: var(--pcb-pad-y) 0;
+}
+:where(.pcb__line:first-child .pcb__ln),
+:where(.pcb__line:first-child .pcb__code) {
+  padding-top: 0;
+}
+:where(.pcb__line:last-child .pcb__ln),
+:where(.pcb__line:last-child .pcb__code) {
+  padding-bottom: 0;
+}
+
+/* ---------- Line states ----------
+   Backgrounds span BOTH gutter and code (full row width).
+   The accent bar (box-shadow inset) goes on the GUTTER cell only,
+   so it never overlaps code text.
+
+   CRITICAL: The gutter cell (.pcb__ln) must ALWAYS have a solid
+   background-color so that scrolling code is hidden behind it.
+   The highlight tint is applied as a background-IMAGE layer on top
+   of the solid color (not via the `background` shorthand, which
+   would overwrite the solid color and make the gutter translucent). */
+
+/* Highlight */
+:where(.pcb__line--hl) .pcb__code {
+  background-color: var(--pcb-line-highlight);
+}
+:where(.pcb__line--hl) .pcb__ln {
+  background-image: linear-gradient(var(--pcb-line-highlight), var(--pcb-line-highlight));
+  box-shadow: inset var(--pcb-bar-width) 0 0 var(--pcb-bar-color-hl);
+}
+
+/* Add (diff ++) */
+:where(.pcb__line--add) .pcb__code {
+  background-color: var(--pcb-line-add);
+}
+:where(.pcb__line--add) .pcb__ln {
+  background-image: linear-gradient(var(--pcb-line-add), var(--pcb-line-add));
+  box-shadow: inset var(--pcb-bar-width) 0 0 var(--pcb-bar-color-add);
+}
+
+/* Delete (diff --) */
+:where(.pcb__line--del) .pcb__code {
+  background-color: var(--pcb-line-del);
+}
+:where(.pcb__line--del) .pcb__ln {
+  background-image: linear-gradient(var(--pcb-line-del), var(--pcb-line-del));
+  box-shadow: inset var(--pcb-bar-width) 0 0 var(--pcb-bar-color-del);
+}
+
+/* Focus */
+:where(.pcb__line--focus) .pcb__code {
+  background-color: var(--pcb-line-focus);
+}
+:where(.pcb__line--focus) .pcb__ln {
+  background-image: linear-gradient(var(--pcb-line-focus), var(--pcb-line-focus));
+  box-shadow: inset var(--pcb-bar-width) 0 0 var(--pcb-bar-color-focus);
+}
+
+/* Error */
+:where(.pcb__line--error) .pcb__code {
+  background-color: var(--pcb-line-error);
+  text-decoration: underline wavy rgba(248, 81, 73, 0.6);
+  text-underline-offset: 3px;
+}
+:where(.pcb__line--error) .pcb__ln {
+  background-image: linear-gradient(var(--pcb-line-error), var(--pcb-line-error));
+  box-shadow: inset var(--pcb-bar-width) 0 0 var(--pcb-bar-color-error);
+}
+
+/* Warning */
+:where(.pcb__line--warning) .pcb__code {
+  background-color: var(--pcb-line-warning);
+}
+:where(.pcb__line--warning) .pcb__ln {
+  background-image: linear-gradient(var(--pcb-line-warning), var(--pcb-line-warning));
+  box-shadow: inset var(--pcb-bar-width) 0 0 var(--pcb-bar-color-warning);
+}
+
+/* When line numbers are OFF, the accent bar goes on .pcb__code directly
+   (left edge, with padding compensation so code doesn't shift). */
+:where(.pcb code:not([data-line-numbers]) .pcb__line--hl) .pcb__code,
+:where(.pcb code:not([data-line-numbers]) .pcb__line--add) .pcb__code,
+:where(.pcb code:not([data-line-numbers]) .pcb__line--del) .pcb__code,
+:where(.pcb code:not([data-line-numbers]) .pcb__line--focus) .pcb__code,
+:where(.pcb code:not([data-line-numbers]) .pcb__line--error) .pcb__code,
+:where(.pcb code:not([data-line-numbers]) .pcb__line--warning) .pcb__code {
+  box-shadow: inset var(--pcb-bar-width) 0 0 var(--pcb-bar-color-hl);
+}
+:where(.pcb code:not([data-line-numbers]) .pcb__line--add) .pcb__code {
+  box-shadow: inset var(--pcb-bar-width) 0 0 var(--pcb-bar-color-add);
+}
+:where(.pcb code:not([data-line-numbers]) .pcb__line--del) .pcb__code {
+  box-shadow: inset var(--pcb-bar-width) 0 0 var(--pcb-bar-color-del);
+}
+:where(.pcb code:not([data-line-numbers]) .pcb__line--focus) .pcb__code {
+  box-shadow: inset var(--pcb-bar-width) 0 0 var(--pcb-bar-color-focus);
+}
+:where(.pcb code:not([data-line-numbers]) .pcb__line--error) .pcb__code {
+  box-shadow: inset var(--pcb-bar-width) 0 0 var(--pcb-bar-color-error);
+}
+:where(.pcb code:not([data-line-numbers]) .pcb__line--warning) .pcb__code {
+  box-shadow: inset var(--pcb-bar-width) 0 0 var(--pcb-bar-color-warning);
+}
+:where(.pcb code:not([data-line-numbers]) .pcb__line--hl) .pcb__code,
+:where(.pcb code:not([data-line-numbers]) .pcb__line--add) .pcb__code,
+:where(.pcb code:not([data-line-numbers]) .pcb__line--del) .pcb__code,
+:where(.pcb code:not([data-line-numbers]) .pcb__line--focus) .pcb__code,
+:where(.pcb code:not([data-line-numbers]) .pcb__line--error) .pcb__code,
+:where(.pcb code:not([data-line-numbers]) .pcb__line--warning) .pcb__code {
+  padding-left: calc(var(--pcb-pad-x) - var(--pcb-bar-width));
+}
+
+/* ---------- Word highlight ---------- */
+:where(.pcb__word) {
+  background: var(--pcb-word-bg);
+  border-radius: 3px;
+  padding: 0.05em 0.15em;
+  margin: 0 -0.05em;
+}
+:where(.pcb__word[data-chars-id]) {
+  background: var(--pcb-word-bg-id);
+}
+
+/* ---------- Visible whitespace ---------- */
+:where(.pcb__space::before) {
+  content: '·';
+  color: var(--pcb-whitespace);
+  opacity: 0.5;
+}
+:where(.pcb__tab::before) {
+  content: '→';
+  color: var(--pcb-whitespace);
+  opacity: 0.5;
+}
+
+/* ---------- Indent guides ---------- */
+:where(.pcb__indent) {
+  box-shadow: inset 1px 0 0 var(--pcb-indent-guide);
+}
+
+/* ---------- Caption ---------- */
+:where(.pcb__caption) {
+  display: block;
+  padding: var(--pcb-caption-pad);
+  font-family: var(--pcb-bar-font);
+  font-size: var(--pcb-bar-font-size);
+  color: var(--pcb-caption-color);
+  background: var(--pcb-caption-bg);
+  border-top: 1px solid var(--pcb-border);
+  text-align: center;
+  line-height: 1.4;
+}
+
+/* ---------- Focus mode: dim non-highlighted lines ---------- */
+:where(.pcb__body--has-hl .pcb__line:not(.pcb__line--hl):not(.pcb__line--add):not(.pcb__line--del):not(.pcb__line--focus):not(.pcb__line--error):not(.pcb__line--warning)) .pcb__code {
+  opacity: var(--pcb-line-dim);
+  transition: opacity .15s ease;
+}
+:where(.pcb__body--has-hl:hover .pcb__line .pcb__code) { opacity: 1; }
+
+/* ---------- Copy-on-hover mode ---------- */
+:where(.pcb--copy-on-hover .pcb__copy) {
+  opacity: 0;
+  transition: opacity .15s ease;
+}
+:where(.pcb--copy-on-hover:hover .pcb__copy),
+:where(.pcb--copy-on-hover:focus-within .pcb__copy) {
+  opacity: 1;
+}
+
+/* ---------- Auto-size gutter based on max digits ---------- */
+/* ---------- Auto-size gutter based on max digits ----------
+   Restored right-aligned look (professional) but with halved widths
+   so the left gap is much smaller than the original. */
+:where([data-line-numbers-max-digits="1"]) { --pcb-gutter-min: 1.25rem; }
+:where([data-line-numbers-max-digits="2"]) { --pcb-gutter-min: 1.75rem; }
+:where([data-line-numbers-max-digits="3"]) { --pcb-gutter-min: 2.25rem; }
+:where([data-line-numbers-max-digits="4"]) { --pcb-gutter-min: 2.75rem; }
+:where([data-line-numbers-max-digits="5"]) { --pcb-gutter-min: 3.25rem; }
+
+/* ---------- Dual-theme support: Shiki's --shiki-light / --shiki-dark CSS vars ----------
+   When Shiki emits both vars on token spans, we pick which to use based on
+   the active theme (explicit data-theme takes precedence over OS preference). */
+
+/* Explicit dark mode */
+:where(html[data-theme="dark"]) .pcb span[style],
+:where(.pcb[data-theme="dark"]) span[style] {
+  color: var(--shiki-dark, inherit) !important;
+}
+/* Explicit light mode */
+:where(html[data-theme="light"]) .pcb span[style],
+:where(.pcb[data-theme="light"]) span[style] {
+  color: var(--shiki-light, inherit) !important;
+}
+/* Auto: follow OS preference when no explicit data-theme */
+@media (prefers-color-scheme: light) {
+  :where(html:not([data-theme="dark"])) :where(.pcb:not([data-theme="dark"])) span[style] {
+    color: var(--shiki-light, inherit) !important;
+  }
+}
+@media (prefers-color-scheme: dark) {
+  :where(html:not([data-theme="light"])) :where(.pcb:not([data-theme="light"])) span[style] {
+    color: var(--shiki-dark, inherit) !important;
+  }
+}
+
+/* ---------- Wrap mode ---------- */
+:where(.pcb--wrap .pcb__code) {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* ---------- Terminal preset (compact) ---------- */
+:where(.pcb--terminal) {
+  --pcb-radius: 6px;
+  --pcb-pad-y: 0.75rem;
+  --pcb-line-height: 1.5;
+}
+
+/* ---------- Minimal preset (no border, no header) ---------- */
+:where(.pcb--minimal) {
+  --pcb-radius: 8px;
+  border: 0;
+  background: transparent;
+}
+:where(.pcb--minimal .pcb__bar) { display: none; }
+
+/* ---------- Collapsible ---------- */
+:where(.pcb--collapse) { padding: 0; }
+:where(.pcb--collapse > summary) {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 1rem;
+  background: var(--pcb-bg-header);
+  font-family: var(--pcb-bar-font);
+  font-size: var(--pcb-bar-font-size);
+  color: var(--pcb-text-bar);
+  border-bottom: 1px solid transparent;
+}
+:where(.pcb--collapse[open] > summary) { border-bottom-color: var(--pcb-border); }
+:where(.pcb--collapse > summary::-webkit-details-marker) { display: none; }
+:where(.pcb--collapse > summary::before) {
+  content: '▸';
+  display: inline-block;
+  transition: transform .15s ease;
+}
+:where(.pcb--collapse[open] > summary::before) { transform: rotate(90deg); }
+
+/* ---------- Inline mode ---------- */
+:where(.pcb--inline) {
+  display: inline;
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  font-size: 0.9em;
+  border: 1px solid var(--pcb-border);
+  background: var(--pcb-bg-header);
+  color: var(--pcb-text);
+  font-family: var(--pcb-font-mono);
+  margin: 0 0.1rem;
+}

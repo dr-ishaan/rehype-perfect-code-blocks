@@ -1,0 +1,15 @@
+/**
+ * The copy-button client script. Inlined once per page (deduped by the
+ * Astro integration via `injectScript`). ~500 bytes gzipped.
+ *
+ * Behavior:
+ *   - Listens for clicks on `.pcb__copy`
+ *   - Copies the textContent of the nearest `pre code`
+ *   - Toggles `.pcb__copy--done` and swaps the icon + label
+ *   - Resets after `data-feedback-duration` ms (default 1600)
+ *   - Falls back to execCommand for non-secure contexts
+ *   - Respects `prefers-reduced-motion` (the CSS handles the animation)
+ *   - Reads `data-done-label`, `data-success-icon`, `data-feedback-duration` from the button
+ */
+export declare const COPY_SCRIPT = "\n(function () {\n  if (window.__pcbCopyReady) return;\n  window.__pcbCopyReady = true;\n\n  function findLabel(btn) {\n    return btn.querySelector('.pcb__copy-label');\n  }\n\n  function findIcon(btn) {\n    return btn.querySelector('svg');\n  }\n\n  document.addEventListener('click', function (e) {\n    var btn = e.target && e.target.closest && e.target.closest('.pcb__copy');\n    if (!btn) return;\n    var figure = btn.closest('.pcb');\n    var code = figure && figure.querySelector('pre code');\n    if (!code) return;\n\n    var done = btn.getAttribute('data-done-label') || 'copied!';\n    var duration = parseInt(btn.getAttribute('data-feedback-duration') || '1600', 10);\n    var successIconHtml = btn.getAttribute('data-success-icon');\n\n    var label = findLabel(btn);\n    var icon = findIcon(btn);\n    var originalLabel = label ? label.textContent : null;\n    var originalIconHtml = icon ? icon.outerHTML : null;\n\n    var finish = function () {\n      btn.classList.add('pcb__copy--done');\n      if (label) label.textContent = done;\n      if (successIconHtml && icon) {\n        var tmp = document.createElement('span');\n        tmp.innerHTML = successIconHtml;\n        var newIcon = tmp.firstChild;\n        if (newIcon) {\n          icon.replaceWith(newIcon);\n          icon = newIcon;\n        }\n      }\n      setTimeout(function () {\n        btn.classList.remove('pcb__copy--done');\n        if (label && originalLabel != null) label.textContent = originalLabel;\n        if (originalIconHtml && icon) {\n          var tmp2 = document.createElement('span');\n          tmp2.innerHTML = originalIconHtml;\n          var oldIcon = icon;\n          icon = tmp2.firstChild;\n          if (icon) oldIcon.replaceWith(icon);\n        }\n      }, duration);\n    };\n\n    if (navigator.clipboard && navigator.clipboard.writeText) {\n      navigator.clipboard.writeText(code.innerText).then(finish).catch(fallback);\n    } else {\n      fallback();\n    }\n\n    function fallback() {\n      var ta = document.createElement('textarea');\n      ta.value = code.innerText;\n      ta.style.position = 'fixed';\n      ta.style.opacity = '0';\n      document.body.appendChild(ta);\n      ta.select();\n      try { document.execCommand('copy'); finish(); } catch (_) {}\n      document.body.removeChild(ta);\n    }\n  });\n})();\n";
+//# sourceMappingURL=copy-script.d.ts.map

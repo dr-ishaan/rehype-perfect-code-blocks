@@ -1,0 +1,205 @@
+/**
+ * rehype-perfect-code-blocks — shared types
+ *
+ * Inspired by rehype-pretty-code, VitePress, Docusaurus, and Expressive Code.
+ */
+export type ShikiTransformer = unknown;
+export interface PerfectCodeOptions {
+    /** Traffic-light dots on the left of the header bar. Default: true */
+    decorations?: boolean;
+    /** Uppercase language pill in the header. Default: true */
+    showLanguage?: boolean;
+    /**
+     * Copy button — boolean, or an object for fine-grained control:
+     *   - visibility: 'always' (default) | 'hover' — show only on figure hover
+     *   - feedbackDuration: ms to show "copied!" state. Default 1600
+     *   - copyIcon / successIcon: raw HTML string to override the default SVG
+     *   - label: button label text (or null for icon-only)
+     *   - doneLabel: label shown after successful copy
+     */
+    copyButton?: boolean | {
+        visibility?: 'always' | 'hover';
+        feedbackDuration?: number;
+        copyIcon?: string;
+        successIcon?: string;
+        label?: string | null;
+        doneLabel?: string;
+    };
+    /** @deprecated Use `copyButton.label`. Label next to the copy icon. Default: 'copy' */
+    copyButtonLabel?: string | null;
+    /** @deprecated Use `copyButton.doneLabel`. Default: 'copied!' */
+    copyButtonDoneLabel?: string;
+    /** When to show line numbers. Default: 'auto' (shown when title is present) */
+    lineNumbers?: 'always' | 'never' | 'auto';
+    /** When to show the header bar. Default: 'auto' (shown when title/lang/copy present) */
+    titleBar?: 'always' | 'never' | 'auto';
+    /** Global default start line number. Default: 1 (can be overridden per-block via `ln{N}`) */
+    lineNumbersStart?: number;
+    /** Enable {1,3-5} line-highlight meta AND // [!code highlight] notation. Default: true */
+    highlight?: boolean;
+    /** Enable +/- diff line coloring AND // [!code ++] / [!code --] notation. Default: true */
+    diff?: boolean;
+    /** Enable // [!code focus] notation. Default: true */
+    focus?: boolean;
+    /** Enable // [!code error] / [!code warning] notations. Default: true */
+    errorLevels?: boolean;
+    /** Default wrap mode. Default: false */
+    wrap?: boolean;
+    /** Auto-collapse blocks longer than N lines. null = never. Default: null */
+    collapseAfter?: number | null;
+    /** Show visible whitespace (tabs/spaces). Default: false */
+    showWhitespace?: false | 'all' | 'boundary' | 'trailing' | 'leading';
+    /** Render vertical indent guides. false | true (default 2) | number (indent width). Default: false */
+    indentGuides?: boolean | number;
+    /** Show a caption below the block via `caption="..."` meta. Default: true */
+    caption?: boolean;
+    /**
+     * - 'auto'        → post-process if Shiki already ran, else call Shiki directly
+     * - 'shiki'       → always call Shiki (re-tokenizes raw blocks)
+     * - 'passthrough' → never tokenize, just wrap existing <pre><code>
+     * Default: 'auto'
+     */
+    engine?: 'auto' | 'shiki' | 'passthrough';
+    /** Shiki options passed through when the plugin calls Shiki itself. */
+    shiki?: {
+        /** Theme — string for single theme, { light, dark } for dual-theme via CSS vars. */
+        theme?: string | {
+            light: string;
+            dark: string;
+        };
+        /** Pre-loaded languages. Defaults to a sensible set; missing langs are lazy-loaded. */
+        langs?: string[];
+        /** Additional Shiki transformers to apply (see @shikijs/transformers). */
+        transformers?: ShikiTransformer[];
+        /** Override the highlighter factory (e.g. for custom TextMate grammars). */
+        getHighlighter?: (opts: {
+            themes: string[];
+            langs: string[];
+        }) => Promise<unknown>;
+        [key: string]: unknown;
+    };
+    /**
+     * Strip Shiki's inline `style="background-color:..."` from <pre> so user CSS
+     * via `--pcb-bg` fully owns the surface. Default: false (we own the bg).
+     */
+    keepBackground?: boolean;
+    /**
+     * Custom // [!code xxx] notations mapped to CSS classes. Default: {}.
+     * Example: `{ 'my-marker': 'pcb__line--custom' }` lets users write
+     * `// [!code my-marker]` to apply the class.
+     */
+    customNotations?: Record<string, string>;
+    /**
+     * Magic comments à la Docusaurus. Each entry defines a line/block marker.
+     * Default:
+     *   [
+     *     { className: 'pcb__line--hl', line: 'highlight-next-line', block: { start: 'highlight-start', end: 'highlight-end' } },
+     *   ]
+     */
+    magicComments?: MagicComment[];
+    /**
+     * Highlight inline `code` blocks. Default: false.
+     * - true / 'lang'  → parse `\`code{:lang}\`` suffix and tokenize via Shiki
+     * - 'token'        → parse `\`code{:.token}\`` suffix and color by VS Code token
+     * - false          → don't touch inline code (only style if `inline: true` is set elsewhere)
+     */
+    inlineCode?: boolean | 'lang' | 'token';
+    /** Default language for inline code when no `{:lang}` suffix is present. */
+    inlineDefaultLang?: string;
+    /** Short aliases for VS Code tokens, e.g. `{ fn: 'entity.name.function' }`. */
+    tokensMap?: Record<string, string>;
+    /**
+     * Auto-switch to terminal preset for these languages. Default:
+     * ['sh', 'bash', 'zsh', 'shell', 'console', 'powershell', 'bat']
+     */
+    terminalLangs?: string[];
+    /**
+     * If the first line of code looks like a filename comment (e.g. `// my-file.ts`
+     * or `# my-file.sh`), use it as the title and drop it from the rendered code.
+     * Default: false.
+     */
+    extractFileNameFromCode?: boolean;
+    /** Filter the raw meta string before parsing. Useful for plugin interop. */
+    filterMetaString?: (meta: string) => string;
+    /** Called for every line element after processing. */
+    onVisitLine?: (line: {
+        element: unknown;
+        lineNumber: number;
+    }) => void;
+    /** Called for every highlighted line. */
+    onVisitHighlightedLine?: (line: {
+        element: unknown;
+        lineNumber: number;
+        id?: string;
+    }) => void;
+    /** Called for every highlighted char range. */
+    onVisitHighlightedChars?: (chars: {
+        element: unknown;
+        text: string;
+        id?: string;
+    }) => void;
+    /** Called for the title element (if present). */
+    onVisitTitle?: (element: unknown) => void;
+    /** Called for the caption element (if present). */
+    onVisitCaption?: (element: unknown) => void;
+    /** Visual preset. Default: 'default' */
+    preset?: 'default' | 'terminal' | 'minimal';
+    /** Inject the bundled CSS automatically. Set false to ship your own. Default: true */
+    injectStyles?: boolean;
+    /** Manual theme override. Default: 'auto' (prefers-color-scheme) */
+    theme?: 'auto' | 'dark' | 'light';
+    /** Also style inline `code` cosmetically (no tokenization). Default: false */
+    inline?: boolean;
+}
+export interface MagicComment {
+    /** CSS class to add to the marked line(s). */
+    className: string;
+    /** Line marker — marks the next line. */
+    line?: string;
+    /** Block markers — mark every line between start and end (inclusive). */
+    block?: {
+        start: string;
+        end: string;
+    };
+}
+/** Parsed fenced-code meta, e.g. ```ts title="x.ts" {1,3-5} ln{5} /foo/ noLang wrap */
+export interface ParsedMeta {
+    language: string | null;
+    title: string | null;
+    caption: string | null;
+    highlight: number[];
+    highlightGroups: {
+        lines: number[];
+        id?: string;
+    }[];
+    wordHighlights: {
+        text: string;
+        range?: [number, number];
+        id?: string;
+    }[];
+    lineNumbersStart: number | null;
+    flags: {
+        wrap: boolean | null;
+        lineNumbers: boolean | null;
+        titleBar: boolean | null;
+        decorations: boolean | null;
+        showLanguage: boolean | null;
+        copyButton: boolean | null;
+        collapse: boolean | null;
+    };
+}
+export type ResolvedBlock = {
+    language: string | null;
+    title: string | null;
+    caption: string | null;
+    highlight: number[];
+    wrap: boolean;
+    lineNumbers: boolean;
+    lineNumbersStart: number;
+    titleBar: boolean;
+    decorations: boolean;
+    showLanguage: boolean;
+    copyButton: boolean;
+    collapse: boolean;
+};
+//# sourceMappingURL=types.d.ts.map

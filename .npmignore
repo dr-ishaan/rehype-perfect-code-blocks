@@ -1,0 +1,11 @@
+# Files to exclude from npm publish
+test-edge-cases.mjs
+stress-tests.mjs
+new-feature-tests.mjs
+.github/
+.vscode/
+.idea/
+.gitignore
+.gitattributes
+*.log
+.DS_Store
