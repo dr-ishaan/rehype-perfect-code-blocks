@@ -125,8 +125,9 @@ export function parseMeta(meta) {
                 continue;
             }
         }
-        // ln{N} or showLineNumbers{N} — start line numbers at N
-        const startMatch = tok.match(/^(?:ln|showlinenumbers)\{(\d+)\}$/i);
+        // ln{N} or showLineNumbers{N} or lineNumbers{N} — start line numbers at N
+        // (issue #5: also accept `linenumbers` as a third alternative, case-insensitive)
+        const startMatch = tok.match(/^(?:ln|showlinenumbers|linenumbers)\{(\d+)\}$/i);
         if (startMatch) {
             result.lineNumbersStart = parseInt(startMatch[1], 10);
             result.flags.lineNumbers = true;
@@ -219,8 +220,9 @@ function tokenize(input) {
                 continue;
             }
         }
-        // ln{N} or showLineNumbers{N}
-        if (/^(?:ln|showlinenumbers)\{/i.test(input.slice(i))) {
+        // ln{N} or showLineNumbers{N} or lineNumbers{N}
+        // (issue #5: also accept `linenumbers` as a prefix)
+        if (/^(?:ln|showlinenumbers|linenumbers)\{/i.test(input.slice(i))) {
             const closeIdx = input.indexOf('}', i);
             const stop = closeIdx === -1 ? input.length : closeIdx + 1;
             tokens.push(input.slice(i, stop));
@@ -264,7 +266,16 @@ function findMatchingQuote(s, start) {
 }
 function parseRanges(spec) {
     const out = new Set();
-    for (const part of spec.split(/[\s,]+/)) {
+    // Issue #4: previously `3 - 5` was split into ['3', '-', '5'] by the
+    // `[\s,]+` separator and the regex `/^(\d+)(?:-(\d+))?$/` rejected the
+    // bare '-'. Result: `{3 - 5}` parsed as [3, 5] instead of [3, 4, 5].
+    //
+    // Fix: pre-normalize whitespace around `-` inside the spec so that
+    // `3 - 5` becomes `3-5` before splitting. The split still happens on
+    // `,` and remaining whitespace (between range tokens), so `{1, 3 - 5, 7}`
+    // → `1, 3-5, 7` → splits to ['1', '3-5', '7'] → [1, 3, 4, 5, 7]. ✓
+    const normalized = spec.replace(/\s*-\s*/g, '-');
+    for (const part of normalized.split(/[\s,]+/)) {
         if (!part)
             continue;
         const m = part.match(/^(\d+)(?:-(\d+))?$/);

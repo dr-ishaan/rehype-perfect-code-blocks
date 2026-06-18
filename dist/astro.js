@@ -5,14 +5,13 @@
  *
  *   // astro.config.mjs
  *   import { defineConfig } from 'astro/config';
- *   import perfectCode from 'rehype-perfect-code-blocks/astro';
+ *   import rehypeRaw from 'rehype-raw';
+ *   import perfectCode from '@dr-ishaan/rehype-perfect-code-blocks/astro';
  *
  *   export default defineConfig({
  *     integrations: [
  *       perfectCode({
- *         decorations: true,
- *         copyButton: true,
- *         // ...all options from src/types.ts
+ *         rehypePlugins: [rehypeRaw],  // for code blocks inside raw HTML
  *       }),
  *     ],
  *   });
@@ -20,16 +19,62 @@
 import { rehypePerfectCodeBlocks } from './index.js';
 import { remarkPreserveCodeMeta } from './remark.js';
 import { COPY_SCRIPT } from './copy-script.js';
-// Vite's ?raw query — type declared in src/vite-raw.d.ts
-import css from './styles.css?raw';
+import { readFileSync } from 'node:fs';
+import { readdirSync, writeFileSync, readFileSync as readFile } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+const __dirname = dirname(fileURLToPath(import.meta.url));
+/**
+ * Load the bundled CSS at runtime via readFileSync rather than via Vite's
+ * `?raw` query. The `?raw` approach only works when Vite is bundling the
+ * module (i.e. inside an Astro/Vite project that resolves the package
+ * through Vite's pipeline). When the package is consumed by a plain Node
+ * script, a non-Vite bundler, or — importantly — when it is *symlinked*
+ * into a project (so Vite treats it as a linked dep), the `?raw` query
+ * fails with `Unknown file extension ".css"`.
+ *
+ * Using readFileSync at runtime is more portable.
+ */
+function loadCss() {
+    try {
+        return readFileSync(join(__dirname, 'styles.css'), 'utf8');
+    }
+    catch {
+        try {
+            return readFileSync(join(__dirname, '..', 'src', 'styles.css'), 'utf8');
+        }
+        catch {
+            return '';
+        }
+    }
+}
+/** Recursively walk a directory and return all .html file paths. */
+function findHtmlFiles(dir) {
+    const results = [];
+    try {
+        const entries = readdirSync(dir, { withFileTypes: true });
+        for (const entry of entries) {
+            const fullPath = join(dir, entry.name);
+            if (entry.isDirectory()) {
+                results.push(...findHtmlFiles(fullPath));
+            }
+            else if (entry.name.endsWith('.html')) {
+                results.push(fullPath);
+            }
+        }
+    }
+    catch {
+        // Directory doesn't exist or can't be read
+    }
+    return results;
+}
 export default function perfectCode(options = {}) {
     return {
         name: 'rehype-perfect-code-blocks',
         hooks: {
-            'astro:config:setup': ({ updateConfig, injectScript }) => {
+            'astro:config:setup': ({ updateConfig }) => {
                 // 1. Register the remark + rehype plugins with the Markdown pipeline.
-                //    The remark plugin preserves fence meta (title="...", {1,3-5}, flags)
-                //    onto the hast tree so the rehype plugin can read it.
+                const userRehypePlugins = (options.rehypePlugins ?? []);
                 updateConfig({
                     markdown: {
                         syntaxHighlight: 'shiki',
@@ -39,28 +84,71 @@ export default function perfectCode(options = {}) {
                                 ? { themes: options.shiki.theme }
                                 : undefined,
                         remarkPlugins: [remarkPreserveCodeMeta],
-                        rehypePlugins: [{ options, implementation: rehypePerfectCodeBlocks }],
+                        rehypePlugins: [
+                            ...userRehypePlugins,
+                            [rehypePerfectCodeBlocks, options],
+                            // Cast: Astro's rehypePlugins type is a complex union; our
+                            // array shape ([plugin, options]) is one of the supported forms.
+                        ],
                     },
                 });
-                // 2. Inject global styles (unless user opted out).
+            },
+            'astro:build:done': ({ dir }) => {
+                // 2. After Astro finishes building all pages, inject CSS + scripts
+                //    into every generated .html file. This is the most reliable
+                //    method — it works with Astro v4, v5, v6, static and SSR modes,
+                //    and doesn't require the user to import anything in their layout.
+                //
+                //    (The previous `injectScript('page', '<style>...')` approach
+                //    breaks on Astro 6 where injectScript expects JS, not HTML.)
+                const injections = [];
+                // CSS
                 if (options.injectStyles !== false) {
-                    injectScript('page', `<style data-pcb>${css}</style>`);
-                }
-                // 3. Inject the copy-button script once per page.
-                if (options.copyButton !== false) {
-                    injectScript('page', `<script>${COPY_SCRIPT}</script>`);
-                    // 3a. Graceful degradation: add .no-js to <html> so copy buttons are
-                    // hidden via CSS until the script removes the class.
-                    if (options.hideCopyWithoutJs !== false) {
-                        injectScript('page', `<script>document.documentElement.classList.add('no-js');</script>`);
+                    const css = loadCss();
+                    if (css) {
+                        injections.push(`<style data-pcb>${css}</style>`);
                     }
                 }
-                // 4. Respect manual theme override (set on <html data-theme="...">).
-                // Validate against allowlist to prevent injection.
+                // Copy-button script
+                if (options.copyButton !== false) {
+                    injections.push(`<script>${COPY_SCRIPT}</script>`);
+                    // Graceful degradation: .no-js class
+                    if (options.hideCopyWithoutJs !== false) {
+                        injections.push(`<script>document.documentElement.classList.add('no-js');</script>`);
+                    }
+                }
+                // Manual theme override
                 if (options.theme && options.theme !== 'auto') {
-                    const safeTheme = ['dark', 'light'].includes(options.theme) ? options.theme : 'auto';
+                    const safeTheme = ['dark', 'light'].includes(options.theme)
+                        ? options.theme
+                        : 'auto';
                     if (safeTheme !== 'auto') {
-                        injectScript('page', `<script>document.documentElement.setAttribute('data-theme','${safeTheme}');</script>`);
+                        injections.push(`<script>document.documentElement.setAttribute('data-theme','${safeTheme}');</script>`);
+                    }
+                }
+                if (injections.length === 0)
+                    return;
+                const injectionHtml = injections.join('\n');
+                const outputDir = fileURLToPath(dir);
+                const htmlFiles = findHtmlFiles(outputDir);
+                for (const htmlFile of htmlFiles) {
+                    try {
+                        const html = readFile(htmlFile, 'utf8');
+                        // Inject before </head>. If no </head> (rare), inject after <html...>.
+                        let updated;
+                        if (html.includes('</head>')) {
+                            updated = html.replace('</head>', `${injectionHtml}</head>`);
+                        }
+                        else if (html.includes('<body')) {
+                            updated = html.replace('<body', `${injectionHtml}<body`);
+                        }
+                        else {
+                            updated = injectionHtml + html;
+                        }
+                        writeFileSync(htmlFile, updated);
+                    }
+                    catch {
+                        // Skip files that can't be read/written
                     }
                 }
             },

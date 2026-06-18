@@ -59,6 +59,29 @@ const DANGEROUS_HTML_PATTERNS = [
     /<object\b/i,
     /<embed\b/i,
 ];
+/**
+ * Defense-in-depth check: returns `true` if the supplied HTML string is free
+ * of obviously dangerous patterns (`<script>`, `on*=` handlers, `javascript:`
+ * URLs, `<iframe>`, `<object>`, `<embed>`).
+ *
+ * Used by `buildCopyButton()` to gate both `copyIcon` (which becomes a hast
+ * subtree via `parseInlineHtml`) and `successIcon` (which is stored verbatim
+ * as a `data-success-icon` attribute and later innerHTML'd by the client
+ * copy-script). Without this check, `successIcon` would be a latent XSS sink.
+ *
+ * This is NOT a full HTML sanitizer. Callers MUST still ensure the input is
+ * developer-trusted. The check exists to fail-closed when dangerous patterns
+ * are detected, not to make untrusted input safe.
+ */
+export function isSafeInlineHtml(html) {
+    if (!html)
+        return true;
+    for (const pattern of DANGEROUS_HTML_PATTERNS) {
+        if (pattern.test(html))
+            return false;
+    }
+    return true;
+}
 function parseInlineHtml(html) {
     // Defense-in-depth: reject obviously dangerous patterns.
     for (const pattern of DANGEROUS_HTML_PATTERNS) {
@@ -180,6 +203,7 @@ export function rehypePerfectCodeBlocks(userOptions = {}) {
         accessibleScroll: true,
         announceCopy: true,
         hideCopyWithoutJs: true,
+        rehypePlugins: [],
         filterMetaString: (s) => s,
         onVisitLine: () => { },
         onVisitHighlightedLine: () => { },
@@ -426,10 +450,17 @@ function buildCopyButton(opts) {
         ariaLabel: 'Copy code',
         dataDoneLabel: doneLabel,
     };
-    if (successIcon)
+    // SECURITY: successIcon is stored verbatim as a data-* attribute and later
+    // innerHTML'd by the client copy-script, so it MUST pass the same
+    // defense-in-depth check as copyIcon. Reject dangerous patterns (issue #2).
+    if (successIcon && isSafeInlineHtml(successIcon)) {
         btnProps.dataSuccessIcon = successIcon;
-    if (feedbackDuration != null)
-        btnProps.dataFeedbackDuration = String(feedbackDuration);
+    }
+    // Always emit data-feedback-duration so the rendered HTML matches the
+    // documented default of 1600ms (issue #8). Previously the attribute was
+    // only emitted when explicitly set, causing the rendered HTML to differ
+    // from the docs even though the runtime behavior was correct.
+    btnProps.dataFeedbackDuration = String(feedbackDuration ?? 1600);
     return h('button', btnProps, btnChildren);
 }
 /** Apply Docusaurus-style magic comments by transforming them into Shiki notation comments. */
@@ -740,12 +771,16 @@ function splitCodeIntoLines(code) {
         });
     }
     // Case 2: Plain tokenized code — split on newlines in Text nodes.
+    //
+    // We split on `\n` in Text nodes; empty lines between two non-empty lines
+    // must be preserved (regression: previously dropped by a `sawAnyContent`
+    // guard that was meant to skip a *trailing* empty line but also skipped
+    // legitimate inter-content empty lines).
+    // The trailing-empty-line case is handled separately by `filterTrailingEmpty()`
+    // at the end of `transformPre()`, so we don't need to special-case it here.
     const lines = [];
     let current = [];
-    let sawAnyContent = false;
     const flush = () => {
-        if (current.length === 0 && sawAnyContent && lines.length > 0)
-            return;
         lines.push({
             type: 'element',
             tagName: 'span',
@@ -762,17 +797,16 @@ function splitCodeIntoLines(code) {
                     flush();
                 if (part) {
                     current.push({ type: 'text', value: part });
-                    sawAnyContent = true;
                 }
             });
         }
         else {
             current.push(child);
-            sawAnyContent = true;
         }
     }
-    if (current.length > 0)
-        flush();
+    // Always flush the final pending line — `filterTrailingEmpty()` will drop
+    // it if it ends up empty (i.e. the source had a trailing `\n`).
+    flush();
     return lines;
 }
 function hasClass(el, name) {

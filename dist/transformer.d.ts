@@ -19,5 +19,20 @@
  */
 import type { Root } from 'hast';
 import type { PerfectCodeOptions } from './types.js';
+/**
+ * Defense-in-depth check: returns `true` if the supplied HTML string is free
+ * of obviously dangerous patterns (`<script>`, `on*=` handlers, `javascript:`
+ * URLs, `<iframe>`, `<object>`, `<embed>`).
+ *
+ * Used by `buildCopyButton()` to gate both `copyIcon` (which becomes a hast
+ * subtree via `parseInlineHtml`) and `successIcon` (which is stored verbatim
+ * as a `data-success-icon` attribute and later innerHTML'd by the client
+ * copy-script). Without this check, `successIcon` would be a latent XSS sink.
+ *
+ * This is NOT a full HTML sanitizer. Callers MUST still ensure the input is
+ * developer-trusted. The check exists to fail-closed when dangerous patterns
+ * are detected, not to make untrusted input safe.
+ */
+export declare function isSafeInlineHtml(html: string | undefined | null): boolean;
 export declare function rehypePerfectCodeBlocks(userOptions?: PerfectCodeOptions): (tree: Root) => Promise<void>;
 //# sourceMappingURL=transformer.d.ts.map
