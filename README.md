@@ -22,11 +22,14 @@ npm install rehype-perfect-code-blocks
 
 Optional peers: `astro` (for the integration), `shiki` (only if you set `engine: 'shiki'`).
 
+**Recommended:** also install [`rehype-raw`](https://github.com/rehypejs/rehype-raw) if your markdown contains raw HTML (`<details>`, `<kbd>`, `<mark>`, etc.). See [⚠️ Required: `rehype-raw`](#-required-rehype-raw-for-code-blocks-inside-raw-html) below.
+
 ## Quick start (Astro)
 
 ```ts
 // astro.config.mjs
 import { defineConfig } from 'astro/config';
+import rehypeRaw from 'rehype-raw';
 import perfectCode from 'rehype-perfect-code-blocks/astro';
 
 export default defineConfig({
@@ -37,6 +40,10 @@ export default defineConfig({
       showLanguage: true,
       copyButton: true,
       shiki: { theme: { light: 'github-light', dark: 'github-dark' } },
+      // Add rehype-raw so code blocks inside raw HTML (<details>, <kbd>, etc.) render
+      rehypePlugins: [
+        rehypeRaw,  // ← must come BEFORE rehypePerfectCodeBlocks
+      ],
     }),
   ],
 });
@@ -50,6 +57,7 @@ That's it. Every fenced code block in `.md` and `.mdx` is now styled.
 import { unified } from 'unified';
 import remarkParse from 'remark-parse';
 import remarkRehype from 'remark-rehype';
+import rehypeRaw from 'rehype-raw';
 import rehypeStringify from 'rehype-stringify';
 import {
   rehypePerfectCodeBlocks,
@@ -59,12 +67,74 @@ import 'rehype-perfect-code-blocks/styles.css';
 
 const html = await unified()
   .use(remarkParse)
-  .use(remarkPreserveCodeMeta)   // ← required: preserves fence meta
-  .use(remarkRehype)
+  .use(remarkPreserveCodeMeta)                     // ← required: preserves fence meta
+  .use(remarkRehype, { allowDangerousHtml: true })  // ← pass raw HTML through
+  .use(rehypeRaw)                                   // ← parse raw HTML into HAST
   .use(rehypePerfectCodeBlocks, { copyButton: true })
   .use(rehypeStringify)
   .process(markdown);
 ```
+
+## ⚠️ Required: `rehype-raw` for code blocks inside raw HTML
+
+If your markdown contains **raw HTML elements** like `<details>`, `<kbd>`, `<mark>`, `<abbr>`, `<sub>`, `<sup>`, `<dl>`, `<figure>`, `<address>`, or `<cite>`, you **must** add [`rehype-raw`](https://github.com/rehypejs/rehype-raw) to your pipeline.
+
+Without `rehype-raw`, `remark-rehype` silently drops all raw HTML — which means:
+- Code blocks inside `<details>` elements won't render
+- `<kbd>Ctrl</kbd>` becomes plain text "Ctrl"
+- `<mark>`, `<abbr>`, `<sub>`, `<sup>`, `<del>`, `<ins>` are all stripped
+
+### Install
+
+```bash
+npm install rehype-raw
+```
+
+### Astro config
+
+```ts
+// astro.config.mjs
+import rehypeRaw from 'rehype-raw';
+import perfectCode from 'rehype-perfect-code-blocks/astro';
+
+export default defineConfig({
+  integrations: [
+    perfectCode({
+      // rehype-raw MUST come before rehypePerfectCodeBlocks in the pipeline
+      rehypePlugins: [rehypeRaw],
+    }),
+  ],
+});
+```
+
+### Standalone rehype
+
+```ts
+unified()
+  .use(remarkParse)
+  .use(remarkPreserveCodeMeta)
+  .use(remarkRehype, { allowDangerousHtml: true })  // pass raw HTML through
+  .use(rehypeRaw)                                    // parse raw HTML into HAST
+  .use(rehypePerfectCodeBlocks, { ... })             // our plugin
+  .use(rehypeStringify)
+```
+
+### What works with `rehype-raw`
+
+| Element | Without `rehype-raw` | With `rehype-raw` |
+| --- | --- | --- |
+| Code blocks in `<details>` | ❌ Stripped | ✅ Rendered |
+| `<kbd>Ctrl</kbd>` | ❌ Plain text | ✅ Styled |
+| `<mark>highlight</mark>` | ❌ Stripped | ✅ Styled |
+| `<abbr title="...">` | ❌ Stripped | ✅ Tooltip |
+| `<sub>` / `<sup>` | ❌ Stripped | ✅ Sub/superscript |
+| `<del>` / `<ins>` | ❌ Stripped | ✅ Strike/underline |
+| `<dl>` definition lists | ❌ Stripped | ✅ Rendered |
+| `<figure>` + `<figcaption>` | ❌ Stripped | ✅ Rendered |
+| `<address>` | ❌ Stripped | ✅ Rendered |
+| `<cite>` / `<q>` | ❌ Stripped | ✅ Rendered |
+
+> **Note:** Code blocks inside markdown blockquotes (`>`) and callouts (`> [!note]`) **always work** — they're parsed as markdown by `remark-parse`, not as raw HTML. `rehype-raw` is only needed for code blocks inside explicit HTML tags.
 
 ## Per-block meta syntax
 
