@@ -1,7 +1,7 @@
 {
-  "name": "rehype-perfect-code-blocks",
-  "version": "1.0.0",
-  "description": "Beautiful, configurable code blocks for Astro / MDX / any rehype pipeline. Wraps Shiki output with a styled header, line numbers, copy button, line highlighting, diff, focus, error levels, word highlights, captions, and per-block overrides. Inspired by rehype-pretty-code, VitePress, Docusaurus, and Expressive Code.",
+  "name": "@dr-ishaan/rehype-perfect-code-blocks",
+  "version": "1.1.0",
+  "description": "Beautiful, configurable code blocks for Astro / MDX / any rehype pipeline. Built on Shiki, inspired by rehype-pretty-code, VitePress, Docusaurus, and Expressive Code.",
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
@@ -30,8 +30,9 @@
   "scripts": {
     "build": "tsc -p tsconfig.json && cp src/styles.css dist/styles.css",
     "dev": "tsc -p tsconfig.json --watch",
-    "test": "node test-edge-cases.mjs && node stress-tests.mjs && node new-feature-tests.mjs",
-    "prepublishOnly": "npm run build"
+    "test": "node test-meta-parser.mjs && node test-dom-structure.mjs && node test-options.mjs && node test-notations.mjs && node test-security.mjs && node test-integration.mjs && node test-regression.mjs && node test-css.mjs && node test-edge-cases.mjs && node stress-tests.mjs && node new-feature-tests.mjs",
+    "prepublishOnly": "npm run build && npm test",
+    "prepack": "npm run build"
   },
   "keywords": [
     "rehype",
@@ -43,10 +44,26 @@
     "markdown",
     "rehype-pretty-code",
     "vitepress",
-    "docusaurus"
+    "docusaurus",
+    "expressive-code",
+    "remark",
+    "highlight",
+    "copy-button",
+    "line-numbers"
   ],
   "license": "MIT",
-  "author": "",
+  "author": "dr-ishaan <dr-ishaan@users.noreply.github.com>",
+  "homepage": "https://github.com/dr-ishaan/rehype-perfect-code-blocks#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dr-ishaan/rehype-perfect-code-blocks.git"
+  },
+  "bugs": {
+    "url": "https://github.com/dr-ishaan/rehype-perfect-code-blocks/issues"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "peerDependencies": {
     "astro": "^4.0.0 || ^5.0.0"
   },
@@ -73,5 +90,9 @@
     "shiki": "^1.0.0",
     "typescript": "^5.4.0",
     "unified": "^11.0.5"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
   }
 }

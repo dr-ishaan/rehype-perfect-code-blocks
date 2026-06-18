@@ -38,6 +38,7 @@
   --pcb-line-focus: rgba(56, 139, 253, 0.18);
   --pcb-line-error: rgba(248, 81, 73, 0.25);
   --pcb-line-warning: rgba(187, 128, 9, 0.25);
+  --pcb-line-info: rgba(56, 139, 253, 0.20);
   --pcb-line-dim: 0.4;
 
   /* Accent bar (left edge of highlighted lines) */
@@ -48,6 +49,7 @@
   --pcb-bar-color-focus: #58a6ff;
   --pcb-bar-color-error: #f85149;
   --pcb-bar-color-warning: #bb8009;
+  --pcb-bar-color-info: #58a6ff;
 
   /* Word highlight */
   --pcb-word-bg: rgba(187, 128, 9, 0.30);
@@ -373,6 +375,15 @@
   box-shadow: inset var(--pcb-bar-width) 0 0 var(--pcb-bar-color-warning);
 }
 
+/* Info (from // [!code info] notation) */
+:where(.pcb__line--info) .pcb__code {
+  background-color: var(--pcb-line-info);
+}
+:where(.pcb__line--info) .pcb__ln {
+  background-image: linear-gradient(var(--pcb-line-info), var(--pcb-line-info));
+  box-shadow: inset var(--pcb-bar-width) 0 0 var(--pcb-bar-color-info);
+}
+
 /* When line numbers are OFF, the accent bar goes on .pcb__code directly
    (left edge, with padding compensation so code doesn't shift). */
 :where(.pcb code:not([data-line-numbers]) .pcb__line--hl) .pcb__code,
@@ -557,4 +568,24 @@
   color: var(--pcb-text);
   font-family: var(--pcb-font-mono);
   margin: 0 0.1rem;
+}
+
+/* ---------- Accessibility: screen-reader-only live region ---------- */
+.pcb__sr-live {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ---------- Graceful degradation: hide copy button when JS is disabled ---------- */
+/* When the copy script loads, it removes .no-js from <html>. Until then,
+   the copy button is hidden (it can't function without JS). */
+html.no-js .pcb__copy {
+  display: none !important;
 }

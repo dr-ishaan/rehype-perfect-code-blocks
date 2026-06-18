@@ -48,8 +48,34 @@ function dotsElement(): Element {
   };
 }
 
-/** Naive inline-HTML parser for tiny SVG/HTML snippets used as ornaments. */
+/**
+ * Naive inline-HTML parser for tiny SVG/HTML snippets used as ornaments.
+ *
+ * SECURITY: This function is intended ONLY for developer-supplied static SVG
+ * strings (e.g. `copyButton.copyIcon`). It does NOT sanitize user input. If
+ * the input contains `<script>` tags or `on*` event handler attributes, they
+ * will be passed through to the DOM. Callers MUST ensure the input is trusted.
+ *
+ * We do a basic allowlist check here to reject obviously dangerous patterns
+ * (defense in depth), but this is NOT a full sanitizer.
+ */
+const DANGEROUS_HTML_PATTERNS = [
+  /<script\b/i,
+  /\son\w+\s*=/i,          // onerror=, onclick=, etc.
+  /javascript:/i,
+  /<iframe\b/i,
+  /<object\b/i,
+  /<embed\b/i,
+];
+
 function parseInlineHtml(html: string): Element {
+  // Defense-in-depth: reject obviously dangerous patterns.
+  for (const pattern of DANGEROUS_HTML_PATTERNS) {
+    if (pattern.test(html)) {
+      // Refuse to parse — return an empty span instead of risking XSS.
+      return { type: 'element', tagName: 'span', properties: {}, children: [] };
+    }
+  }
   // For our use case (single <svg>...</svg> or single <span>...</span>), we
   // build the hast tree manually to avoid pulling in hast-util-from-html for
   // every icon. We support <svg>...</svg> with <path/> children.
@@ -122,7 +148,7 @@ const DEFAULT_MAGIC_COMMENTS: MagicComment[] = [
   },
 ];
 
-const DEFAULT_TERMINAL_LANGS = ['sh', 'bash', 'zsh', 'shell', 'console', 'powershell', 'bat', 'cmd'];
+const DEFAULT_TERMINAL_LANGS = ['sh', 'bash', 'zsh', 'shell', 'console', 'powershell', 'bat', 'cmd', 'fish'];
 
 export function rehypePerfectCodeBlocks(userOptions: PerfectCodeOptions = {}) {
   const { shiki: userShiki, ...rest } = userOptions;
@@ -152,13 +178,22 @@ export function rehypePerfectCodeBlocks(userOptions: PerfectCodeOptions = {}) {
       ...(userShiki ?? {}),
     },
     keepBackground: false,
+    styleToClass: false,
+    useHastApi: true,
     customNotations: {},
     magicComments: DEFAULT_MAGIC_COMMENTS,
     inlineCode: false,
     inlineDefaultLang: '',
+    defaultInlineLang: '',
     tokensMap: {},
     terminalLangs: DEFAULT_TERMINAL_LANGS,
     extractFileNameFromCode: false,
+    languageLabels: {},
+    languageAliases: {},
+    defaultBlockLang: '',
+    accessibleScroll: true,
+    announceCopy: true,
+    hideCopyWithoutJs: true,
     filterMetaString: (s) => s,
     onVisitLine: () => {},
     onVisitHighlightedLine: () => {},
@@ -218,9 +253,20 @@ async function transformPre(
   const langFromClasses = extractLanguageFromClass(className);
   const langFromDataAttr =
     (codeChild.properties?.dataLanguage as string | undefined) ?? null;
-  const language = meta.language ?? langFromClasses ?? langFromDataAttr;
+  let language = meta.language ?? langFromClasses ?? langFromDataAttr;
+
+  // Apply defaultBlockLang if no language is detected.
+  if (!language && opts.defaultBlockLang) {
+    language = opts.defaultBlockLang;
+  }
+
   const effectiveLang =
     language && !['plaintext', 'text', 'txt', ''].includes(language) ? language : null;
+
+  // Resolve the display label for the language badge (e.g. "ts" → "TypeScript").
+  const languageLabel = effectiveLang
+    ? (opts.languageLabels?.[effectiveLang] ?? effectiveLang)
+    : null;
 
   // Optional: extract filename from first-line comment.
   let title = meta.title;
@@ -317,7 +363,20 @@ async function transformPre(
   // Body: scrollable container around <pre>.
   const bodyClasses = ['pcb__body'];
   if (resolved.highlight.length > 0) bodyClasses.push('pcb__body--has-hl');
-  const body = h('div', { className: bodyClasses }, [newPre]);
+  // Accessibility: mark scrollable region so screen readers announce it (WCAG 4.1.2).
+  const bodyProps: Record<string, unknown> = { className: bodyClasses };
+  if (opts.accessibleScroll) {
+    bodyProps.role = 'region';
+    // Escape the title/lang for use in an aria-label attribute (defense in depth:
+    // prevents any <script> or other HTML from leaking into the attribute).
+    const safeLabel = title
+      ? `Code block: ${title.replace(/[<>"'&]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;', '&': '&amp;' }[c] ?? c))}`
+      : effectiveLang
+        ? `Code block: ${effectiveLang}`
+        : 'Code block';
+    bodyProps.ariaLabel = safeLabel;
+  }
+  const body = h('div', bodyProps, [newPre]);
 
   // Header bar.
   let bar: Element | null = null;
@@ -328,7 +387,7 @@ async function transformPre(
       h('div', { className: ['pcb__title'] }, title ? [hText(title)] : [])
     );
     if (resolved.showLanguage && resolved.language) {
-      barChildren.push(h('div', { className: ['pcb__lang'] }, [hText(resolved.language)]));
+      barChildren.push(h('div', { className: ['pcb__lang'] }, [hText(languageLabel ?? resolved.language)]));
     }
     if (resolved.copyButton) {
       barChildren.push(buildCopyButton(opts));
@@ -355,7 +414,7 @@ async function transformPre(
       h('span', { className: ['pcb__title'] }, [hText(title ?? 'code')])
     );
     if (resolved.showLanguage && resolved.language) {
-      summaryChildren.push(h('div', { className: ['pcb__lang'] }, [hText(resolved.language)]));
+      summaryChildren.push(h('div', { className: ['pcb__lang'] }, [hText(languageLabel ?? resolved.language)]));
     }
     const summary = h('summary', {}, summaryChildren);
     const details = h('details', { className: figClasses, open: false }, [summary, body]);
@@ -611,8 +670,17 @@ function toLineSpans(
       else if (c === 'highlighted') classes.add('pcb__line--hl');
       else if (c === 'error') classes.add('pcb__line--error');
       else if (c === 'warning') classes.add('pcb__line--warning');
+      else if (c === 'info') classes.add('pcb__line--info');
       else if (c === 'has-diff' || c === 'has-focused' || c === 'has-highlighted') {
         // Skip body-level classes (these appear on <pre>/<code>, not <span class="line">).
+      } else if (c === 'pcb__line--hl' || c === 'pcb__line--add' || c === 'pcb__line--del' ||
+                 c === 'pcb__line--focus' || c === 'pcb__line--error' || c === 'pcb__line--warning' ||
+                 c === 'pcb__line--info') {
+        // Shiki transformers may add our own pcb__line--* classes directly
+        // (we configure them to use these names). Pass them through.
+        classes.add(c);
+      } else if (c.startsWith('pcb__word') || c.startsWith('pcb__line--')) {
+        // Skip other pcb__ prefixed classes we don't recognize (avoid duplicates).
       } else {
         // Preserve unknown classes for interop with user CSS.
         classes.add(c);
@@ -641,6 +709,18 @@ function toLineSpans(
     // Map word-highlight spans inside this line.
     const mappedChildren = mapWordHighlights(line.children);
 
+    // The line wrapper itself (the Shiki <span class="line ...">) becomes the
+    // content of .pcb__code. Strip its classes — we've already mapped them
+    // onto the outer .pcb__line wrapper, so they shouldn't also appear here.
+    // We do this by creating a new wrapper span with empty classes but
+    // preserving the children.
+    const innerWrapper: ElementContent = {
+      type: 'element',
+      tagName: 'span',
+      properties: { className: [] },
+      children: mappedChildren,
+    };
+
     // Build the row: [gutter-cell?, code-cell]
     const lineChildren: ElementContent[] = [];
     if (resolved.lineNumbers) {
@@ -649,7 +729,7 @@ function toLineSpans(
       );
     }
     lineChildren.push(
-      h('span', { className: ['pcb__code'] }, mappedChildren)
+      h('span', { className: ['pcb__code'] }, [innerWrapper])
     );
 
     return h('span', { className: [...classes] }, lineChildren);
@@ -699,12 +779,19 @@ function splitCodeIntoLines(code: Element): Element[] {
       hasClass(c, 'line')
   );
   if (spans.length > 0) {
-    return spans.map((s) => ({
-      type: 'element',
-      tagName: 'span',
-      properties: { ...(s.properties ?? {}) },
-      children: s.children,
-    } as Element));
+    return spans.map((s) => {
+      // Preserve the original classes on the line element so toLineSpans can
+      // inspect them and map Shiki's transformer classes onto ours.
+      const originalClasses = (s.properties?.className as string[] | undefined) ?? [];
+      return {
+        type: 'element',
+        tagName: 'span',
+        // Keep the classes — toLineSpans will read them and then we drop the
+        // inner wrapper entirely (its children become our .pcb__code's children).
+        properties: { ...(s.properties ?? {}), className: originalClasses },
+        children: s.children,
+      } as Element;
+    });
   }
 
   // Case 2: Plain tokenized code — split on newlines in Text nodes.

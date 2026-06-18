@@ -69,6 +69,12 @@ export interface PerfectCodeOptions {
         };
         /** Pre-loaded languages. Defaults to a sensible set; missing langs are lazy-loaded. */
         langs?: string[];
+        /**
+         * Regex engine: 'oniguruma' (default, requires WASM) | 'javascript' (pure JS, edge-safe).
+         * The JavaScript engine is recommended for Cloudflare Workers / Vercel Edge / browser bundles.
+         * Default: 'oniguruma'
+         */
+        regexEngine?: 'oniguruma' | 'javascript';
         /** Additional Shiki transformers to apply (see @shikijs/transformers). */
         transformers?: ShikiTransformer[];
         /** Override the highlighter factory (e.g. for custom TextMate grammars). */
@@ -83,6 +89,17 @@ export interface PerfectCodeOptions {
      * via `--pcb-bg` fully owns the surface. Default: false (we own the bg).
      */
     keepBackground?: boolean;
+    /**
+     * Convert Shiki's inline `style="color:..."` on token spans into deduplicated
+     * CSS classes (via `transformerStyleToClass`). Massive HTML payload reduction
+     * for dual-theme blocks. Default: false (keep inline styles for simplicity).
+     */
+    styleToClass?: boolean;
+    /**
+     * Use `codeToHast` (direct HAST output) instead of `codeToHtml` + HTML-parse
+     * round-trip. Faster + safer. Default: true.
+     */
+    useHastApi?: boolean;
     /**
      * Custom // [!code xxx] notations mapped to CSS classes. Default: {}.
      * Example: `{ 'my-marker': 'pcb__line--custom' }` lets users write
@@ -110,7 +127,7 @@ export interface PerfectCodeOptions {
     tokensMap?: Record<string, string>;
     /**
      * Auto-switch to terminal preset for these languages. Default:
-     * ['sh', 'bash', 'zsh', 'shell', 'console', 'powershell', 'bat']
+     * ['sh', 'bash', 'zsh', 'shell', 'console', 'powershell', 'bat', 'cmd', 'fish']
      */
     terminalLangs?: string[];
     /**
@@ -119,6 +136,44 @@ export interface PerfectCodeOptions {
      * Default: false.
      */
     extractFileNameFromCode?: boolean;
+    /**
+     * Map language identifiers to display labels in the header badge.
+     * Example: `{ ts: 'TypeScript', js: 'JavaScript', sh: 'Shell' }`.
+     * Default: {} (uses the raw language identifier).
+     */
+    languageLabels?: Record<string, string>;
+    /**
+     * Map language aliases to canonical Shiki language IDs for tokenization.
+     * Example: `{ ts: 'typescript', js: 'javascript', sh: 'bash' }`.
+     * Default: {} (passes the language identifier as-is to Shiki).
+     */
+    languageAliases?: Record<string, string>;
+    /**
+     * Default language for fenced blocks when none is specified.
+     * Example: 'typescript'. Default: '' (no default, falls back to plaintext).
+     */
+    defaultBlockLang?: string;
+    /**
+     * Default language for inline code when no `{:lang}` suffix is present.
+     * (Renamed from `inlineDefaultLang` for clarity; old name still works.)
+     */
+    defaultInlineLang?: string;
+    /**
+     * Add `role="region"` and `aria-label` to scrollable code blocks (WCAG 4.1.2).
+     * Default: true.
+     */
+    accessibleScroll?: boolean;
+    /**
+     * Announce "Copied!" to screen readers via an `aria-live="polite"` region
+     * after a successful copy. Default: true.
+     */
+    announceCopy?: boolean;
+    /**
+     * Hide the copy button when JavaScript is disabled (graceful degradation).
+     * Adds a `<noscript>` style that sets `.pcb__copy { display: none }`.
+     * Default: true.
+     */
+    hideCopyWithoutJs?: boolean;
     /** Filter the raw meta string before parsing. Useful for plugin interop. */
     filterMetaString?: (meta: string) => string;
     /** Called for every line element after processing. */

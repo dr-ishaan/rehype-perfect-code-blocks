@@ -41,6 +41,7 @@ type ShikiTransformer = unknown;
 
 type ShikiHighlighter = {
   codeToHtml: (code: string, opts: Record<string, unknown>) => string;
+  codeToHast: (code: string, opts: Record<string, unknown>) => { type: 'root'; children: unknown[] };
   getLoadedLanguages: () => string[];
   loadLanguage: (lang: string | string[]) => Promise<void>;
   loadTheme: (theme: string | string[]) => Promise<void>;
@@ -51,13 +52,14 @@ const highlighterCache = new Map<string, Promise<ShikiHighlighter>>();
 async function getHighlighter(
   themeKeys: string[],
   langs: string[],
-  userGetHighlighter?: (opts: { themes: string[]; langs: string[] }) => Promise<unknown>
+  userGetHighlighter?: (opts: { themes: string[]; langs: string[] }) => Promise<unknown>,
+  regexEngine?: 'oniguruma' | 'javascript'
 ): Promise<ShikiHighlighter> {
   // Filter out langs that aren't bundled with Shiki to avoid synchronous
   // throws inside `createHighlighter`. We use a try/catch around the
   // bundle lookup via `bundledLanguages`.
   const safeLangs = filterBundledLangs(langs);
-  const cacheKey = `${themeKeys.join(',')}|${[...safeLangs].sort().join(',')}`;
+  const cacheKey = `${themeKeys.join(',')}|${[...safeLangs].sort().join(',')}|${regexEngine ?? 'onig'}`;
   let promise = highlighterCache.get(cacheKey);
   if (!promise) {
     promise = (async () => {
@@ -65,10 +67,21 @@ async function getHighlighter(
         return (await userGetHighlighter({ themes: themeKeys, langs: safeLangs })) as ShikiHighlighter;
       }
       const shiki = await import('shiki');
-      const all = await shiki.createHighlighter({
+      const createOpts: Record<string, unknown> = {
         themes: themeKeys,
         langs: safeLangs.length > 0 ? safeLangs : ['typescript', 'bash', 'javascript', 'json', 'html', 'css'],
-      });
+      };
+      // Pure-JS regex engine for edge runtimes (Cloudflare Workers, Vercel Edge, browser).
+      // No WASM download required.
+      if (regexEngine === 'javascript') {
+        try {
+          const engineMod = await import('shiki/engine/javascript');
+          createOpts.engine = engineMod.createJavaScriptRegexEngine();
+        } catch {
+          // Fallback to default (oniguruma) if the JS engine subpath isn't available.
+        }
+      }
+      const all = await shiki.createHighlighter(createOpts as unknown as Parameters<typeof shiki.createHighlighter>[0]);
       return all as unknown as ShikiHighlighter;
     })();
     highlighterCache.set(cacheKey, promise);
@@ -100,10 +113,10 @@ function filterBundledLangs(langs: string[]): string[] {
 }
 
 /** Build the list of transformers based on user options + meta. */
-function buildTransformers(
+async function buildTransformers(
   opts: Required<PerfectCodeOptions>,
   metaStr: string
-): unknown[] {
+): Promise<unknown[]> {
   const transformers: unknown[] = [];
   void metaStr;
 
@@ -150,6 +163,7 @@ function buildTransformers(
         classMap: {
           error: ['pcb__line--error'],
           warning: ['pcb__line--warning'],
+          info: ['pcb__line--info'],
         },
         matchAlgorithm: 'v3',
       })
@@ -189,6 +203,17 @@ function buildTransformers(
           indent,
         })
       );
+    }
+  }
+
+  // Style-to-class: convert Shiki's inline `style="color:..."` on token spans
+  // into deduplicated CSS classes (massive HTML payload reduction for dual-theme).
+  if (opts.styleToClass) {
+    try {
+      const { transformerStyleToClass } = await import('@shikijs/transformers');
+      transformers.push(transformerStyleToClass());
+    } catch {
+      // Module not available — skip silently.
     }
   }
 
@@ -252,7 +277,8 @@ export async function runShikiOnRawBlocks(
   const highlighter = await getHighlighter(
     themeKeys,
     [...langSet],
-    userGetHighlighter
+    userGetHighlighter,
+    opts.shiki.regexEngine
   );
 
   // Lazily load any langs not yet loaded. Shiki's `loadLanguage` throws
@@ -272,6 +298,9 @@ export async function runShikiOnRawBlocks(
     );
   }
 
+  // Apply language aliases (e.g., { ts: 'typescript' }).
+  const langAlias = opts.languageAliases ?? {};
+
   for (const pre of targets) {
     const code = pre.children.find(
       (c): c is Element => c.type === 'element' && c.tagName === 'code'
@@ -280,45 +309,73 @@ export async function runShikiOnRawBlocks(
 
     const text = extractText(code);
     const langClass = (code.properties?.className as string[] | undefined)?.[0] ?? '';
-    const lang = (langClass.match(/^language-(.+)$/) ?? [])[1] ?? 'plaintext';
+    const rawLang = (langClass.match(/^language-(.+)$/) ?? [])[1] ?? 'plaintext';
+    const lang = langAlias[rawLang] ?? rawLang;
     const metaStr =
       (code.properties?.dataMeta as string | undefined) ??
       (pre.properties?.dataMeta as string | undefined) ??
       '';
 
-    const transformers = buildTransformers(opts, metaStr);
+    const transformers = await buildTransformers(opts, metaStr);
 
-    // Build codeToHtml options. Use `themes` (plural) for dual-theme output
+    // Build codeToHast/codeToHtml options. Use `themes` (plural) for dual-theme output
     // so Shiki emits `--shiki-light` / `--shiki-dark` CSS vars.
-    const codeToHtmlOpts: Record<string, unknown> = {
+    const shikiOpts: Record<string, unknown> = {
       lang,
       meta: { __raw: metaStr },
       transformers,
     };
     if (typeof themeSpec === 'string') {
-      codeToHtmlOpts.theme = themeSpec;
+      shikiOpts.theme = themeSpec;
     } else {
-      codeToHtmlOpts.themes = themeSpec;
-      codeToHtmlOpts.defaultColor = 'dark'; // tells Shiki which color to inline by default
+      shikiOpts.themes = themeSpec;
+      shikiOpts.defaultColor = 'dark'; // tells Shiki which color to inline by default
     }
 
-    let html: string;
+    // Prefer codeToHast (direct HAST output, no HTML-parse round-trip).
+    // Fall back to codeToHtml + fromHtml if codeToHast isn't available.
+    let newPre: Element | null = null;
+    const useHast = opts.useHastApi !== false && typeof highlighter.codeToHast === 'function';
+
     try {
-      html = highlighter.codeToHtml(text, codeToHtmlOpts);
+      if (useHast) {
+        const hastRoot = highlighter.codeToHast(text, shikiOpts) as { type: 'root'; children: Element[] };
+        // Shiki's codeToHast uses raw HTML attribute names (`class` instead of
+        // `className`, `aria-hidden` instead of `ariaHidden`). Normalize them
+        // so the rest of our pipeline (which expects hast property names) works.
+        normalizeHast(hastRoot);
+        newPre = hastRoot.children.find(
+          (c): c is Element => c.type === 'element' && c.tagName === 'pre'
+        ) ?? null;
+      } else {
+        const html = highlighter.codeToHtml(text, shikiOpts);
+        const fragment = fromHtml(html, { fragment: true });
+        newPre = fragment.children.find(
+          (c): c is Element => c.type === 'element' && c.tagName === 'pre'
+        ) ?? null;
+      }
     } catch {
       // Fallback: plaintext
-      const fallbackOpts = { ...codeToHtmlOpts, lang: 'plaintext' };
       try {
-        html = highlighter.codeToHtml(text, fallbackOpts);
+        const fallbackOpts = { ...shikiOpts, lang: 'plaintext' };
+        if (useHast) {
+          const hastRoot = highlighter.codeToHast(text, fallbackOpts) as { type: 'root'; children: Element[] };
+          normalizeHast(hastRoot);
+          newPre = hastRoot.children.find(
+            (c): c is Element => c.type === 'element' && c.tagName === 'pre'
+          ) ?? null;
+        } else {
+          const html = highlighter.codeToHtml(text, fallbackOpts);
+          const fragment = fromHtml(html, { fragment: true });
+          newPre = fragment.children.find(
+            (c): c is Element => c.type === 'element' && c.tagName === 'pre'
+          ) ?? null;
+        }
       } catch {
         continue; // give up silently
       }
     }
 
-    const fragment = fromHtml(html, { fragment: true });
-    const newPre = fragment.children.find(
-      (c): c is Element => c.type === 'element' && c.tagName === 'pre'
-    );
     if (newPre) {
       // Preserve the data-meta attribute so the rehype transformer can read
       // fence meta after Shiki re-tokenizes the block.
@@ -332,11 +389,11 @@ export async function runShikiOnRawBlocks(
         }
         // Re-attach language-X class so the transformer can detect the language.
         const existingClasses = (newCode.properties.className as string[] | undefined) ?? [];
-        const langClass2 = `language-${lang}`;
+        const langClass2 = `language-${rawLang}`;
         if (!existingClasses.includes(langClass2)) {
           (newCode.properties as Record<string, unknown>).className = [...existingClasses, langClass2];
         }
-        (newCode.properties as Record<string, unknown>).dataLanguage = lang;
+        (newCode.properties as Record<string, unknown>).dataLanguage = rawLang;
       }
       Object.assign(pre, newPre);
     }
@@ -353,4 +410,58 @@ function extractText(el: Element): string {
   let out = '';
   visit(el, 'text', (t) => { out += t.value; });
   return out;
+}
+
+/**
+ * Normalize a Shiki HAST tree so property names follow the hast convention
+ * (camelCase: `className`, `ariaHidden`, etc.) instead of raw HTML attribute
+ * names (`class`, `aria-hidden`).
+ *
+ * Shiki's `codeToHast` returns raw HTML attribute names, but our pipeline
+ * (and `rehype-stringify`) expects camelCase. `hast-util-from-html` does this
+ * normalization automatically when parsing an HTML string, so the `codeToHtml`
+ * path doesn't need this — only the `codeToHast` path does.
+ */
+const HTML_ATTR_TO_HAST: Record<string, string> = {
+  class: 'className',
+  'aria-hidden': 'ariaHidden',
+  'aria-label': 'ariaLabel',
+  'aria-live': 'ariaLive',
+  'aria-atomic': 'ariaAtomic',
+  'aria-describedby': 'ariaDescribedby',
+  'aria-labelledby': 'ariaLabelledby',
+  'aria-controls': 'ariaControls',
+  'aria-expanded': 'ariaExpanded',
+  'aria-pressed': 'ariaPressed',
+  'aria-selected': 'ariaSelected',
+  'data-line': 'dataLine',
+  'data-language': 'dataLanguage',
+  'data-meta': 'dataMeta',
+  'data-theme': 'dataTheme',
+  'tabindex': 'tabIndex',
+  'colspan': 'colSpan',
+  'rowspan': 'rowSpan',
+  'for': 'htmlFor',
+  'autocomplete': 'autoComplete',
+};
+
+function normalizeHast(node: unknown): void {
+  if (!node || typeof node !== 'object') return;
+  const n = node as { type?: string; properties?: Record<string, unknown>; children?: unknown[] };
+  if (n.type === 'element' && n.properties) {
+    const newProps: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(n.properties)) {
+      const camelKey = HTML_ATTR_TO_HAST[key] ?? key.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+      // Special case: 'class' should become an array of class names.
+      if (key === 'class') {
+        newProps.className = Array.isArray(value) ? value : String(value).split(/\s+/);
+      } else {
+        newProps[camelKey] = value;
+      }
+    }
+    n.properties = newProps;
+  }
+  if (Array.isArray(n.children)) {
+    for (const child of n.children) normalizeHast(child);
+  }
 }

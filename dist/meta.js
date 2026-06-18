@@ -183,9 +183,10 @@ function tokenize(input) {
         if (input[i] === '{') {
             const end = input.indexOf('}', i);
             const stop = end === -1 ? input.length : end + 1;
-            // Also consume trailing #id
             let j = stop;
+            // Consume trailing #id (the # itself, then word chars/dashes).
             if (input[j] === '#') {
+                j++; // skip the #
                 while (j < input.length && /[\w-]/.test(input[j]))
                     j++;
             }

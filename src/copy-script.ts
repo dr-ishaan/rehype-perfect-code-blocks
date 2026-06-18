@@ -1,6 +1,6 @@
 /**
  * The copy-button client script. Inlined once per page (deduped by the
- * Astro integration via `injectScript`). ~500 bytes gzipped.
+ * Astro integration via `injectScript`). ~600 bytes gzipped.
  *
  * Behavior:
  *   - Listens for clicks on `.pcb__copy`
@@ -10,11 +10,37 @@
  *   - Falls back to execCommand for non-secure contexts
  *   - Respects `prefers-reduced-motion` (the CSS handles the animation)
  *   - Reads `data-done-label`, `data-success-icon`, `data-feedback-duration` from the button
+ *   - Announces "Copied" to screen readers via an aria-live region (WCAG 4.1.2)
+ *   - Hides copy button when JS is disabled (via .no-js class on <html>)
  */
 export const COPY_SCRIPT = `
 (function () {
   if (window.__pcbCopyReady) return;
   window.__pcbCopyReady = true;
+
+  // Remove the .no-js class so the copy buttons become visible (graceful degradation).
+  if (document.documentElement.classList.contains('no-js')) {
+    document.documentElement.classList.remove('no-js');
+    document.documentElement.classList.add('js');
+  }
+
+  // Reuse a single aria-live region for all copy announcements.
+  var liveRegion = document.querySelector('.pcb__sr-live');
+  if (!liveRegion) {
+    liveRegion = document.createElement('span');
+    liveRegion.className = 'pcb__sr-live';
+    liveRegion.setAttribute('aria-live', 'polite');
+    liveRegion.setAttribute('aria-atomic', 'true');
+    liveRegion.setAttribute('role', 'status');
+    document.body.appendChild(liveRegion);
+  }
+
+  function announce(msg) {
+    if (!liveRegion) return;
+    liveRegion.textContent = '';
+    // Force re-announcement by clearing then setting on next tick.
+    setTimeout(function () { liveRegion.textContent = msg; }, 50);
+  }
 
   function findLabel(btn) {
     return btn.querySelector('.pcb__copy-label');
@@ -52,6 +78,7 @@ export const COPY_SCRIPT = `
           icon = newIcon;
         }
       }
+      announce(done);
       setTimeout(function () {
         btn.classList.remove('pcb__copy--done');
         if (label && originalLabel != null) label.textContent = originalLabel;

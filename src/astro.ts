@@ -58,14 +58,27 @@ export default function perfectCode(
         // 3. Inject the copy-button script once per page.
         if (options.copyButton !== false) {
           injectScript('page', `<script>${COPY_SCRIPT}</script>`);
+
+          // 3a. Graceful degradation: add .no-js to <html> so copy buttons are
+          // hidden via CSS until the script removes the class.
+          if (options.hideCopyWithoutJs !== false) {
+            injectScript(
+              'page',
+              `<script>document.documentElement.classList.add('no-js');</script>`
+            );
+          }
         }
 
         // 4. Respect manual theme override (set on <html data-theme="...">).
+        // Validate against allowlist to prevent injection.
         if (options.theme && options.theme !== 'auto') {
-          injectScript(
-            'page',
-            `<script>document.documentElement.setAttribute('data-theme','${options.theme}');</script>`
-          );
+          const safeTheme = ['dark', 'light'].includes(options.theme) ? options.theme : 'auto';
+          if (safeTheme !== 'auto') {
+            injectScript(
+              'page',
+              `<script>document.documentElement.setAttribute('data-theme','${safeTheme}');</script>`
+            );
+          }
         }
       },
     },
