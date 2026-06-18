@@ -174,6 +174,14 @@ export interface PerfectCodeOptions {
      * Default: true.
      */
     hideCopyWithoutJs?: boolean;
+    /**
+     * Additional rehype plugins to run BEFORE rehype-perfect-code-blocks.
+     * Pass `rehypeRaw` here if your markdown contains raw HTML (`<details>`,
+     * `<kbd>`, `<mark>`, etc.).
+     * Example: `rehypePlugins: [rehypeRaw]`
+     * Default: []
+     */
+    rehypePlugins?: unknown[];
     /** Filter the raw meta string before parsing. Useful for plugin interop. */
     filterMetaString?: (meta: string) => string;
     /** Called for every line element after processing. */

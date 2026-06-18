@@ -19,6 +19,26 @@
       "types": "./dist/remark.d.ts",
       "import": "./dist/remark.js"
     },
+    "./meta": {
+      "types": "./dist/meta.d.ts",
+      "import": "./dist/meta.js"
+    },
+    "./transformer": {
+      "types": "./dist/transformer.d.ts",
+      "import": "./dist/transformer.js"
+    },
+    "./shiki": {
+      "types": "./dist/shiki.d.ts",
+      "import": "./dist/shiki.js"
+    },
+    "./copy-script": {
+      "types": "./dist/copy-script.d.ts",
+      "import": "./dist/copy-script.js"
+    },
+    "./types": {
+      "types": "./dist/types.d.ts",
+      "import": "./dist/types.js"
+    },
     "./styles.css": "./dist/styles.css"
   },
   "files": [
@@ -65,7 +85,7 @@
     "node": ">=18.0.0"
   },
   "peerDependencies": {
-    "astro": "^4.0.0 || ^5.0.0"
+    "astro": "^4.0.0 || ^5.0.0 || ^6.0.0"
   },
   "peerDependenciesMeta": {
     "astro": {

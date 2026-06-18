@@ -115,6 +115,7 @@ function resolveDefaults(opts) {
         accessibleScroll: opts.accessibleScroll ?? true,
         announceCopy: opts.announceCopy ?? true,
         hideCopyWithoutJs: opts.hideCopyWithoutJs ?? true,
+        rehypePlugins: opts.rehypePlugins ?? [],
         filterMetaString: opts.filterMetaString ?? ((s) => s),
         onVisitLine: opts.onVisitLine ?? (() => { }),
         onVisitHighlightedLine: opts.onVisitHighlightedLine ?? (() => { }),

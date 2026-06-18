@@ -5,14 +5,13 @@
  *
  *   // astro.config.mjs
  *   import { defineConfig } from 'astro/config';
- *   import perfectCode from 'rehype-perfect-code-blocks/astro';
+ *   import rehypeRaw from 'rehype-raw';
+ *   import perfectCode from '@dr-ishaan/rehype-perfect-code-blocks/astro';
  *
  *   export default defineConfig({
  *     integrations: [
  *       perfectCode({
- *         decorations: true,
- *         copyButton: true,
- *         // ...all options from src/types.ts
+ *         rehypePlugins: [rehypeRaw],  // for code blocks inside raw HTML
  *       }),
  *     ],
  *   });
