@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.2] — 2026-06-19
+
+### Summary
+
+Patch release fixing a DoS bug where a fenced code block whose meta string requested a very large line-highlight range (e.g. ```` ```fsharp {1-1000000} ````) would throw `RangeError: Maximum call stack size exceeded` and abort the entire pipeline. No API changes; no backward-compatibility concerns. All 1000 pre-existing tests continue to pass, plus 51 new regression tests.
+
+### Bug fixes
+
+- **Cap line-highlight ranges to prevent stack overflow** ([#11](https://github.com/dr-ishaan/rehype-perfect-code-blocks/issues/11), [PR #15](https://github.com/dr-ishaan/rehype-perfect-code-blocks/pull/15)) — A meta string like `{1-1000000}` would previously cause `parseRanges()` in `src/meta.ts` to expand the range into a 1,000,000-element `Set`, then the call site `result.highlight.push(...lines)` would exhaust V8's call stack (the spread operator passes each element as a separate stack argument, and V8 caps this at ~100k args). The throw propagated up through the unified pipeline and aborted the entire `process()` call — surrounding markdown in the same document was also lost. This is a DoS vector for any deployment that renders user-supplied markdown (issue trackers, comment systems, CMSes, forum software). A single comment containing ```` ```x {1-1000000}\ny\n``` ```` would crash the renderer.
+
+  The fix has two complementary parts in `src/meta.ts`:
+
+  1. `parseRanges()` now short-circuits ranges whose total span exceeds 10,000 lines, returning an empty array (skip highlighting for that spec). The block still renders normally; it just doesn't have line-highlighting applied. The cap is intentionally much larger than any realistic code block (a 10k-line code block is itself pathological) to avoid false positives.
+  2. The call site uses a `for` loop instead of `push(...lines)` as defensive programming — even if a future code path bypasses the cap, the spread operator can't blow the stack.
+
+  No API change. No backward-compatibility concern. Previously these inputs threw and aborted the entire pipeline; after the fix they render correctly (just without the out-of-range line highlighting).
+
+  Discovered by a 10,400-case fuzz suite against the package; 66 test cases in that suite hit this bug.
+
+### Verification
+
+- All 1000 pre-existing tests pass (no regressions).
+- New `test-issue-11.mjs` adds 51 regression tests covering: `parseMeta` unit tests (the underlying bug), normal ranges still work (no false positives), end-to-end pipeline tests with the exact issue repro across 10 languages, multi-block documents with huge ranges, performance (pathological inputs return in <100ms), and realistic large-block use cases (5000-line ranges still work).
+- Total: 1051/1051 tests passing.
+
 ## [1.2.1] — 2026-06-19
 
 ### Summary
