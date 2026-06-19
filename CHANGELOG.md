@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.1] — 2026-06-19
+
+### Summary
+
+Patch release fixing a case-sensitive language loader bug that caused fenced code blocks with non-lowercase language identifiers (e.g. ```` ```JS ````, ```` ```TypeScript ````, ```` ```Python ````) to throw `Language 'XXX' is not included in this bundle` and abort the entire pipeline. No API changes; no backward-compatibility concerns. All 972 pre-existing tests continue to pass, plus 28 new regression tests.
+
+### Bug fixes
+
+- **Case-insensitive language resolution** ([#12](https://github.com/dr-ishaan/rehype-perfect-code-blocks/issues/12), [PR #14](https://github.com/dr-ishaan/rehype-perfect-code-blocks/pull/14)) — Language identifiers are now normalized to lowercase before any Shiki call. Previously, the lazy-loader path called `highlighter.loadLanguage(lang)` with the raw case-preserving identifier from the fence, while Shiki's bundled grammars all use lowercase IDs (`javascript`, `typescript`, `python`, …). Shiki's own `codeToHast` / `codeToHtml` are case-insensitive, but the plugin's loader call site was not. This is valid CommonMark and works in every other major markdown renderer (GitHub, VS Code, GitLab, Docusaurus, VitePress, `rehype-pretty-code`). The fix normalizes the identifier to lowercase at three places in `src/shiki.ts`:
+
+  1. When collecting langs for the initial highlighter load.
+  2. When resolving the per-block lang for `codeToHast` / `codeToHtml`.
+  3. When looking up user-defined `languageAliases` (config is now case-insensitive too — `{ TS: 'typescript' }` works the same as `{ ts: 'typescript' }`).
+
+  The output's `data-language` attribute now uses the lowercase normalized form (e.g. `data-language="javascript"` instead of `data-language="JavaScript"`). The original-case `language-*` CSS class is still added to the output `<code>` element (when different from the lowercase form) so existing user CSS targeting like `.language-JavaScript` continues to work.
+
+  Discovered by a 10,400-case fuzz suite against the package; 30 test cases in that suite hit this bug.
+
+### Verification
+
+- All 972 pre-existing tests pass (no regressions).
+- New `test-issue-12.mjs` adds 28 regression tests covering: exact reproduction cases, real syntax highlighting (not plaintext fallback), case-variants producing identical output to lowercase baseline, `languageAliases` working with case-insensitive lookup, `data-language` attribute normalization, and multi-block documents with mixed case.
+- Total: 1000/1000 tests passing.
+
 ## [1.2.0] — 2026-06-18
 
 ### Summary
