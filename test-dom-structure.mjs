@@ -36,7 +36,9 @@ function has(h, n) { return h.includes(n); }
 {
   const h = await render('```js\nfoo\n```');
   assert('emits <figure class="pcb">', has(h, '<figure class="pcb'));
-  assert('emits <pre>', has(h, '<pre>'));
+  // <pre> may have a style attribute (Pattern 2: theme-aware --pcb-* defaults)
+  // so we match either <pre> or <pre ...>.
+  assert('emits <pre>', /<pre(?:\s[^>]*)?>/.test(h));
   assert('emits <code', has(h, '<code'));
   assert('emits pcb__line', has(h, 'pcb__line'));
   assert('emits pcb__body', has(h, 'pcb__body'));

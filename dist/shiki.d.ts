@@ -15,6 +15,26 @@
 import type { Root } from 'hast';
 import type { PerfectCodeOptions } from './types.js';
 /**
+ * Run a task function inside the mutually exclusive highlighter queue.
+ * All calls are serialized globally — the next task starts only after the
+ * current one resolves or rejects.
+ */
+export declare function runHighlighterTask<T>(taskFn: () => Promise<T>): Promise<T>;
+/**
+ * Pattern 3 (adopted from VitePress): Dispose all cached highlighters and
+ * clear the cache. Call this in long-running dev servers when the theme
+ * changes, or during cleanup of a build pipeline, to release the WASM
+ * engine + loaded grammars + theme cache held by Shiki.
+ *
+ * After calling this, the next render will create a fresh highlighter.
+ *
+ * @example
+ *   // In a Vite dev server shutdown hook:
+ *   import { disposeHighlighter } from '@dr-ishaan/rehype-perfect-code-blocks';
+ *   server.http2.close(() => disposeHighlighter());
+ */
+export declare function disposeHighlighter(): void;
+/**
  * Walk the tree; for every <pre><code> that does NOT yet look Shiki-processed
  * (i.e. no `astro-code` / `shiki` class), tokenize it via Shiki and replace
  * the node. Also pass `transformers` + `meta` so all the official Shiki

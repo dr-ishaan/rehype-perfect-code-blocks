@@ -18,9 +18,15 @@
  */
 import type { Plugin } from 'unified';
 import type { Root } from 'hast';
+import { disposeHighlighter, runHighlighterTask } from './shiki.js';
 import { remarkPreserveCodeMeta } from './remark.js';
+import { wordDiff, hasChanges } from './word-diff.js';
+import type { DiffToken } from './word-diff.js';
 import type { PerfectCodeOptions } from './types.js';
 export { remarkPreserveCodeMeta };
+export { disposeHighlighter, runHighlighterTask };
+export { wordDiff, hasChanges };
+export type { DiffToken };
 export declare const rehypePerfectCodeBlocks: Plugin<[PerfectCodeOptions?], Root>;
 export default rehypePerfectCodeBlocks;
 //# sourceMappingURL=index.d.ts.map

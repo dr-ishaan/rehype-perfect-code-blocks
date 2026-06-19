@@ -5,6 +5,64 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] — 2026-06-19
+
+### Summary
+
+Minor release adopting 5 architectural patterns from community competitors (expressive-code, VitePress, rehype-pretty-code), identified through a systematic source-code comparison of 6 community packages. The patterns improve correctness (highlighter race conditions), UX (theme-aware color defaults, SPA support), and add a new opt-in word-level diff feature. All 1051 pre-existing tests continue to pass, plus 41 new regression tests for the adopted patterns. No breaking API changes; all new behavior is opt-in or backward-compatible.
+
+### Features
+
+#### Pattern 1: Highlighter task queue (from expressive-code)
+
+- New exported function `runHighlighterTask<T>(taskFn: () => Promise<T>): Promise<T>` — a mutually exclusive FIFO queue that serializes all highlighter operations (createHighlighter, loadLanguage, codeToHast) globally. Prevents race conditions in parallel static-site builds where multiple unified pipelines share the same module-level highlighter cache.
+- All highlighter creation and lazy-language-loading in `src/shiki.ts` now runs inside `runHighlighterTask()`.
+- Tradeoff: slight throughput reduction in parallel builds; correctness > throughput for syntax highlighting.
+
+#### Pattern 2: Color-contrast-aware theme defaults (from expressive-code)
+
+- New `src/color-utils.ts` module with `parseColor`, `contrastRatio`, `ensureColorContrastOnBackground`, `mix`, `lighten`, `darken`, `toHex`, `extractThemeColors`, and `computeThemeAwareDefaults` utilities.
+- The `<pre>` element now receives inline `--pcb-*` CSS variable defaults derived from the loaded Shiki theme: `--pcb-bg`, `--pcb-fg`, `--pcb-ln-fg` (contrast-adjusted for WCAG), `--pcb-line-highlight-bg`, `--pcb-line-add-bg`, `--pcb-line-del-bg`, `--pcb-line-focus-bg`.
+- Code blocks now look good with ANY Shiki theme out of the box — line numbers, diff backgrounds, and focus highlights are automatically legible against the theme's background color.
+- Defaults are cached per (highlighter, theme) combination via a `WeakMap` to avoid recomputing per block.
+- The static `dist/styles.css` continues to ship its own generic defaults; the runtime overrides them with theme-aware values via inline styles on `<pre>`.
+
+#### Pattern 3: `disposeHighlighter()` lifecycle (from VitePress)
+
+- New exported function `disposeHighlighter()` — releases all cached Shiki highlighters (WASM engine, loaded grammars, theme cache) and clears the cache.
+- Intended for long-running dev servers / watch mode where themes change over time. After calling, the next render creates a fresh highlighter.
+- VitePress was the only community package that properly disposed its highlighter; we now match that behavior.
+
+#### Pattern 4: Event-delegation copy button + MutationObserver (from VitePress + expressive-code)
+
+- The copy-button client script (`src/copy-script.ts`) now registers a `MutationObserver` that watches for new code blocks added to the DOM (e.g. by React/Vue re-render, Astro view transitions, Turbolinks navigation) and re-applies the `.no-js → .js` class swap + ensures the aria-live region exists.
+- New `astro:page-load` event listener for Astro view transitions — re-initializes UI state after SPA navigations.
+- The script already used event delegation (`document.addEventListener('click', ...)` with `closest('.pcb__copy')`); Pattern 4 completes the SPA-robustness story.
+- No inline `onclick` handlers (CSP-friendly); no per-button listeners (efficient for pages with many code blocks).
+
+#### Pattern 5: Word-level diff (selective adoption from expressive-code)
+
+- New `src/word-diff.ts` module with `wordDiff(oldStr, newStr): DiffToken[]` and `hasChanges(tokens): boolean` — a self-contained LCS-based word diff algorithm (~80 lines, no external deps).
+- New `wordDiff: boolean` option (default `false`, opt-in). When enabled alongside `diff: true`, adjacent `pcb__line--del` / `pcb__line--add` pairs are post-processed: the per-word diff is computed and changed words are wrapped in `<mark class="pcb__word-diff--del">` / `<mark class="pcb__word-diff--add">` elements.
+- Makes it easy for readers to see exactly what changed within a diff line, not just which lines changed.
+- `wordDiff` and `hasChanges` are also exported as standalone utilities for users who want to compute word diffs in their own code.
+- This is a selective adoption of expressive-code's token-annotation architecture — we did NOT rewrite the transformer to use `codeToTokensBase` + annotations (that would be a major rewrite). Instead, we added the most impactful feature (word-level diff) as a post-processing step on top of the existing HAST-walking code.
+
+### Verification
+
+- All 1051 pre-existing tests pass (no regressions).
+- New `test-architecture-patterns.mjs` adds 41 regression tests covering all 5 patterns.
+- Total: 1092/1092 tests passing.
+
+### References
+
+- Architecture comparison report: 590-line analysis of 6 community packages (rehype-pretty-code, expressive-code, @shikijs/transformers, VitePress, Docusaurus, astro-expressive-code) with 30 cited source file references.
+- Pattern 1 source: `expressive-code/packages/@expressive-code/plugin-shiki/src/highlighter.ts:133-170` (`runHighlighterTask`).
+- Pattern 2 source: `expressive-code/packages/@expressive-code/core/src/internal/core-styles.ts:191-215` (theme-aware defaults as functions).
+- Pattern 3 source: `vitepress/src/node/markdown/plugins/highlight.ts:223` (`highlighter.dispose()` return).
+- Pattern 4 source: `vitepress/src/client/app/composables/copyCode.ts` + `expressive-code/packages/@expressive-code/plugin-frames/src/copy-js-module.ts`.
+- Pattern 5 source: `expressive-code/packages/@expressive-code/plugin-text-markers/src/index.ts` (`mark`/`ins`/`del` word-level markers).
+
 ## [1.2.2] — 2026-06-19
 
 ### Summary
