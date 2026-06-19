@@ -94,7 +94,13 @@ export function parseMeta(meta) {
             const idMatch = after.match(/^#([\w-]+)/);
             const lines = parseRanges(rangePart);
             if (lines.length > 0) {
-                result.highlight.push(...lines);
+                // Issue #11: use a loop instead of `push(...lines)` to avoid
+                // stack overflow if `lines` is somehow huge (e.g. via a future
+                // code path that bypasses the MAX_HIGHLIGHT_LINES cap in
+                // parseRanges). Spread on >~100k args exhausts the V8 call stack.
+                for (let i = 0; i < lines.length; i++) {
+                    result.highlight.push(lines[i]);
+                }
                 result.highlightGroups.push({ lines, id: idMatch?.[1] });
             }
             continue;
@@ -285,6 +291,22 @@ function parseRanges(spec) {
     // `,` and remaining whitespace (between range tokens), so `{1, 3 - 5, 7}`
     // → `1, 3-5, 7` → splits to ['1', '3-5', '7'] → [1, 3, 4, 5, 7]. ✓
     const normalized = spec.replace(/\s*-\s*/g, '-');
+    // Issue #11: a range like {1-1000000} would previously expand to a
+    // 1,000,000-element Set, then `result.highlight.push(...lines)` at the
+    // call site would blow the V8 stack (spread on huge arrays exceeds the
+    // ~100k-arg limit). This is a DoS vector for any deployment that renders
+    // user-supplied markdown.
+    //
+    // Fix: short-circuit ranges whose span exceeds a sane cap. Highlighting
+    // more than 10,000 lines in a single code block is not a real use case —
+    // at that point the user almost certainly has a typo or is trying to abuse
+    // the renderer. We return an empty array (skip highlighting) rather than
+    // throwing, so the rest of the block still renders normally.
+    //
+    // The cap is intentionally much larger than any realistic code block
+    // (a 10k-line code block is itself pathological) to avoid false positives.
+    const MAX_HIGHLIGHT_LINES = 10_000;
+    let totalSpan = 0;
     for (const part of normalized.split(/[\s,]+/)) {
         if (!part)
             continue;
@@ -295,6 +317,14 @@ function parseRanges(spec) {
         const end = m[2] ? parseInt(m[2], 10) : start;
         const lo = Math.min(start, end);
         const hi = Math.max(start, end);
+        const span = hi - lo + 1;
+        totalSpan += span;
+        if (totalSpan > MAX_HIGHLIGHT_LINES) {
+            // Range is implausibly large — bail out and skip highlighting
+            // for this entire meta spec. The block still renders; it just
+            // won't have any line-highlighting applied.
+            return [];
+        }
         for (let n = lo; n <= hi; n++)
             out.add(n);
     }
