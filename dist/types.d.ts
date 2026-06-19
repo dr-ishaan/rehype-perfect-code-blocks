@@ -47,6 +47,16 @@ export interface PerfectCodeOptions {
     wrap?: boolean;
     /** Auto-collapse blocks longer than N lines. null = never. Default: null */
     collapseAfter?: number | null;
+    /**
+     * Per-line collapsible sections.
+     * Pass a meta string like `collapse="5-12,20-30"` to wrap matching line ranges
+     * in `<details><summary>N collapsed lines</summary>...</details>`.
+     * Style options: 'github' (default), 'collapsible-start', 'collapsible-end', 'collapsible-auto'.
+     * Default: null (disabled).
+     */
+    collapseRanges?: string | null;
+    /** Style for collapsible sections. Default: 'github'. */
+    collapseStyle?: 'github' | 'collapsible-start' | 'collapsible-end' | 'collapsible-auto';
     /** Show visible whitespace (tabs/spaces). Default: false */
     showWhitespace?: false | 'all' | 'boundary' | 'trailing' | 'leading';
     /** Render vertical indent guides. false | true (default 2) | number (indent width). Default: false */
@@ -62,11 +72,15 @@ export interface PerfectCodeOptions {
     engine?: 'auto' | 'shiki' | 'passthrough';
     /** Shiki options passed through when the plugin calls Shiki itself. */
     shiki?: {
-        /** Theme — string for single theme, { light, dark } for dual-theme via CSS vars. */
+        /**
+         * Theme — string for single theme, { light, dark } for dual-theme via CSS vars,
+         * or a Record<string, string> for multi-theme (3+ themes) support.
+         * Multi-theme example: `{ light: 'github-light', dark: 'github-dark', dim: 'github-dark-dimmed' }`.
+         */
         theme?: string | {
             light: string;
             dark: string;
-        };
+        } | Record<string, string>;
         /** Pre-loaded languages. Defaults to a sensible set; missing langs are lazy-loaded. */
         langs?: string[];
         /**
@@ -77,6 +91,12 @@ export interface PerfectCodeOptions {
         regexEngine?: 'oniguruma' | 'javascript';
         /** Additional Shiki transformers to apply (see @shikijs/transformers). */
         transformers?: ShikiTransformer[];
+        /**
+         * Controls whether user-provided transformers run 'before' or 'after' the
+         * auto-registered ones (default: 'after'). Use 'before' to give user
+         * transformers first access to the code text.
+         */
+        transformerOrder?: 'before' | 'after';
         /** Override the highlighter factory (e.g. for custom TextMate grammars). */
         getHighlighter?: (opts: {
             themes: string[];
@@ -100,6 +120,38 @@ export interface PerfectCodeOptions {
      * round-trip. Faster + safer. Default: true.
      */
     useHastApi?: boolean;
+    /**
+     * Disable auto-registration of @shikijs/transformers. When true, ONLY the
+     * transformers in `shiki.transformers` are applied. Default: false.
+     * Useful for advanced users who want full manual control.
+     */
+    disableAutoTransformers?: boolean;
+    /**
+     * Strip all comments from the rendered code (// ..., # ..., /* ... *\/, <!-- ... -->).
+     * Powered by @shikijs/transformers `transformerRemoveComments`. Default: false.
+     */
+    removeComments?: boolean;
+    /**
+     * Remove line breaks from the rendered code (joins all lines into one).
+     * Powered by @shikijs/transformers `transformerRemoveLineBreaks`. Default: false.
+     * Useful for compact inline-style code blocks.
+     */
+    removeLineBreaks?: boolean;
+    /**
+     * When `true`, treat {1,3-5} meta ranges as zero-indexed (line 0 is the first
+     * line). When `false` (default), line numbers start at 1.
+     */
+    zeroIndexed?: boolean;
+    /**
+     * Programmatic per-line class assignment (Shiki's `transformerCompactLineOptions`).
+     * Example: `[{ line: 1, classes: ['highlight'] }, { line: 3, classes: ['add'] }]`.
+     * Default: [] (disabled).
+     */
+    lineOptions?: {
+        line: number;
+        classes?: string[];
+        attrs?: Record<string, string>;
+    }[];
     /**
      * Custom // [!code xxx] notations mapped to CSS classes. Default: {}.
      * Example: `{ 'my-marker': 'pcb__line--custom' }` lets users write
@@ -127,7 +179,7 @@ export interface PerfectCodeOptions {
     tokensMap?: Record<string, string>;
     /**
      * Auto-switch to terminal preset for these languages. Default:
-     * ['sh', 'bash', 'zsh', 'shell', 'console', 'powershell', 'bat', 'cmd', 'fish']
+     * ['sh', 'bash', 'zsh', 'shell', 'console', 'powershell', 'bat', 'cmd', 'fish', 'ansi']
      */
     terminalLangs?: string[];
     /**
@@ -159,7 +211,19 @@ export interface PerfectCodeOptions {
      */
     defaultInlineLang?: string;
     /**
-     * Add `role="region"` and `aria-label` to scrollable code blocks (WCAG 4.1.2).
+     * Replace tabs with N spaces before tokenization. 0 disables (default).
+     * Useful for languages where Shiki's tab rendering doesn't match the
+     * surrounding code style.
+     */
+    tabWidth?: number;
+    /**
+     * Strip leading `#` comment lines from terminal code when copying to clipboard.
+     * Default: true (only effective when preset === 'terminal').
+     */
+    copyStripComments?: boolean;
+    /**
+     * Add `role="region"`, `aria-label`, and `tabindex="0"` to scrollable code
+     * blocks (WCAG 2.1.1 keyboard accessible, 4.1.2 name-role-value).
      * Default: true.
      */
     accessibleScroll?: boolean;
@@ -174,6 +238,12 @@ export interface PerfectCodeOptions {
      * Default: true.
      */
     hideCopyWithoutJs?: boolean;
+    /**
+     * Add a screen-reader-only `<span class="pcb__sr-only">Terminal window</span>`
+     * to terminal-preset blocks that have no title. Improves screen reader context.
+     * Default: true.
+     */
+    terminalSrOnlyTitle?: boolean;
     /**
      * Additional rehype plugins to run BEFORE rehype-perfect-code-blocks.
      * Pass `rehypeRaw` here if your markdown contains raw HTML (`<details>`,
@@ -205,6 +275,37 @@ export interface PerfectCodeOptions {
     onVisitTitle?: (element: unknown) => void;
     /** Called for the caption element (if present). */
     onVisitCaption?: (element: unknown) => void;
+    /**
+     * Localized UI strings. Defaults are English. Override per-locale by
+     * passing a different `texts` object based on the current language.
+     */
+    texts?: {
+        /** Copy button label (default: 'copy'). */
+        copyLabel?: string;
+        /** Label shown after successful copy (default: 'copied!'). */
+        doneLabel?: string;
+        /** Aria-label for the copy button (default: 'Copy code'). */
+        copyAriaLabel?: string;
+        /** Screen-reader-only title for terminal-preset blocks (default: 'Terminal window'). */
+        terminalSrOnlyTitle?: string;
+        /** aria-label prefix for scrollable body (default: 'Code block'). */
+        codeBlockAriaPrefix?: string;
+        /** Summary text for collapsed sections, with `{n}` placeholder (default: '{n} collapsed lines'). */
+        collapsedLinesLabel?: (n: number) => string;
+    };
+    /**
+     * Custom logger. Defaults to `console`. Useful for silencing warnings in
+     * production or routing them to a structured logger.
+     */
+    logger?: {
+        warn: (msg: string) => void;
+        error: (msg: string) => void;
+    };
+    /**
+     * Nonce to add to injected `<script>` and `<style>` tags. Enables strict CSP
+     * (`script-src 'self' 'nonce-...'`). Default: undefined (no nonce).
+     */
+    cspNonce?: string;
     /** Visual preset. Default: 'default' */
     preset?: 'default' | 'terminal' | 'minimal';
     /** Inject the bundled CSS automatically. Set false to ship your own. Default: true */
@@ -241,6 +342,10 @@ export interface ParsedMeta {
         id?: string;
     }[];
     lineNumbersStart: number | null;
+    collapseRanges: {
+        from: number;
+        to: number;
+    }[];
     flags: {
         wrap: boolean | null;
         lineNumbers: boolean | null;

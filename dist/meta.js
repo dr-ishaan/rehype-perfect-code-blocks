@@ -52,6 +52,7 @@ export function parseMeta(meta) {
         highlightGroups: [],
         wordHighlights: [],
         lineNumbersStart: null,
+        collapseRanges: [],
         flags: {
             wrap: null,
             lineNumbers: null,
@@ -74,6 +75,15 @@ export function parseMeta(meta) {
         // caption="..." or caption='...'
         if (tok.startsWith('caption=')) {
             result.caption = unquote(tok.slice('caption='.length));
+            continue;
+        }
+        // collapse="5-12,20-30" — per-line collapsible sections
+        if (tok.startsWith('collapse=')) {
+            const val = unquote(tok.slice('collapse='.length));
+            result.collapseRanges = parseCollapseRanges(val);
+            if (result.collapseRanges.length > 0) {
+                result.flags.collapse = true;
+            }
             continue;
         }
         // {1,3-5} or {1,3-5}#id  — line highlight (optionally grouped)
@@ -152,8 +162,8 @@ function tokenize(input) {
             i++;
         if (i >= input.length)
             break;
-        // Quoted key="value" or key='value' (title=, caption=)
-        if (/^(?:title|caption)=$/.test(input.slice(i).match(/^[a-z]+=/i)?.[0] ?? '')) {
+        // Quoted key="value" or key='value' (title=, caption=, collapse=)
+        if (/^(?:title|caption|collapse)=$/.test(input.slice(i).match(/^[a-z]+=/i)?.[0] ?? '')) {
             const eq = input.indexOf('=', i);
             let j = eq + 1;
             const quote = input[j];
@@ -298,6 +308,29 @@ function unquote(s) {
         return s.slice(1, -1).replace(/\\'/g, "'").replace(/\\\\/g, '\\');
     }
     return s;
+}
+/**
+ * Parse a collapse-range spec like "5-12,20-30" into structured ranges.
+ * Each part is either `N` (single line) or `N-M` (range, inclusive).
+ * Whitespace around commas and `-` is allowed.
+ *
+ * Example: "5-12, 20-30" → [{from:5,to:12}, {from:20,to:30}]
+ */
+function parseCollapseRanges(spec) {
+    const out = [];
+    // Normalize whitespace around `-` so `5 - 12` parses correctly (mirrors parseRanges).
+    const normalized = spec.replace(/\s*-\s*/g, '-');
+    for (const part of normalized.split(/[\s,]+/)) {
+        if (!part)
+            continue;
+        const m = part.match(/^(\d+)(?:-(\d+))?$/);
+        if (!m)
+            continue;
+        const start = parseInt(m[1], 10);
+        const end = m[2] ? parseInt(m[2], 10) : start;
+        out.push({ from: Math.min(start, end), to: Math.max(start, end) });
+    }
+    return out.sort((a, b) => a.from - b.from);
 }
 function unescapeRegex(s) {
     return s.replace(/\\\//g, '/').replace(/\\\\/g, '\\');

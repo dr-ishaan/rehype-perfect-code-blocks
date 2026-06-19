@@ -48,6 +48,12 @@ function loadCss() {
         }
     }
 }
+/** Escape a string for use as an HTML attribute value (defense in depth). */
+function escapeAttr(s) {
+    return s.replace(/[<>"'&]/g, (c) => ({
+        '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;', '&': '&amp;',
+    }[c] ?? c));
+}
 /** Recursively walk a directory and return all .html file paths. */
 function findHtmlFiles(dir) {
     const results = [];
@@ -102,19 +108,22 @@ export default function perfectCode(options = {}) {
                 //    (The previous `injectScript('page', '<style>...')` approach
                 //    breaks on Astro 6 where injectScript expects JS, not HTML.)
                 const injections = [];
+                // CSP nonce: if set, add `nonce="..."` to all <script> and <style> tags
+                // so they pass a strict Content-Security-Policy.
+                const nonceAttr = options.cspNonce ? ` nonce="${escapeAttr(options.cspNonce)}"` : '';
                 // CSS
                 if (options.injectStyles !== false) {
                     const css = loadCss();
                     if (css) {
-                        injections.push(`<style data-pcb>${css}</style>`);
+                        injections.push(`<style data-pcb${nonceAttr}>${css}</style>`);
                     }
                 }
                 // Copy-button script
                 if (options.copyButton !== false) {
-                    injections.push(`<script>${COPY_SCRIPT}</script>`);
+                    injections.push(`<script${nonceAttr}>${COPY_SCRIPT}</script>`);
                     // Graceful degradation: .no-js class
                     if (options.hideCopyWithoutJs !== false) {
-                        injections.push(`<script>document.documentElement.classList.add('no-js');</script>`);
+                        injections.push(`<script${nonceAttr}>document.documentElement.classList.add('no-js');</script>`);
                     }
                 }
                 // Manual theme override
@@ -123,7 +132,7 @@ export default function perfectCode(options = {}) {
                         ? options.theme
                         : 'auto';
                     if (safeTheme !== 'auto') {
-                        injections.push(`<script>document.documentElement.setAttribute('data-theme','${safeTheme}');</script>`);
+                        injections.push(`<script${nonceAttr}>document.documentElement.setAttribute('data-theme','${safeTheme}');</script>`);
                     }
                 }
                 if (injections.length === 0)

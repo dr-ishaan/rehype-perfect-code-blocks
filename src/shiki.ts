@@ -16,7 +16,6 @@
 import type { Element, Root } from 'hast';
 import { fromHtml } from 'hast-util-from-html';
 import { visit } from 'unist-util-visit';
-import { createRequire } from 'node:module';
 import type { PerfectCodeOptions } from './types.js';
 import {
   transformerNotationDiff,
@@ -31,7 +30,25 @@ import {
   transformerRemoveNotationEscape,
 } from '@shikijs/transformers';
 
-const require = createRequire(import.meta.url);
+// Lazily resolve a `require` function for synchronous Shiki bundle lookups.
+// In Node.js ESM we use `createRequire(import.meta.url)`. In edge runtimes
+// / browsers / Deno, `node:module` may not exist — in that case we fall back
+// to `null` and `filterBundledLangs` returns a permissive filter (all langs
+// pass through; the try/catch around `codeToHast` handles unknown langs).
+let syncRequire: ((id: string) => unknown) | null = null;
+try {
+  // `node:module` is a Node.js built-in. The static import would fail at
+  // module-load time in non-Node environments, so we use a dynamic import
+  // wrapped in try/catch (top-level await is supported in ESM + Node 18+).
+  const nodeModuleApi = (await import('node:module').catch(() => null)) as
+    | { createRequire?: (url: string) => (id: string) => unknown }
+    | null;
+  if (nodeModuleApi?.createRequire) {
+    syncRequire = nodeModuleApi.createRequire(import.meta.url);
+  }
+} catch {
+  syncRequire = null;
+}
 
 // Use a permissive type for ShikiTransformer to avoid cross-package type
 // identity issues when @shikijs/transformers and shiki bundle different copies
@@ -91,9 +108,17 @@ async function getHighlighter(
 
 /** Filter out languages that aren't bundled with Shiki (avoids sync throws). */
 function filterBundledLangs(langs: string[]): string[] {
+  // Always keep plaintext variants (special — don't require a bundle).
+  const alwaysKeep = new Set(['plaintext', 'text', 'txt', 'ansi']);
   let bundled: Set<string>;
+  if (!syncRequire) {
+    // Edge runtime / browser — can't read shiki's bundle list synchronously.
+    // Pass through everything; the try/catch around codeToHast handles
+    // unknown langs by falling back to plaintext.
+    return langs;
+  }
   try {
-    const shiki = require('shiki') as {
+    const shiki = syncRequire('shiki') as {
       bundledLanguages?: Record<string, unknown>;
       bundledLanguagesAlias?: Record<string, unknown>;
     };
@@ -102,13 +127,11 @@ function filterBundledLangs(langs: string[]): string[] {
       ...Object.keys(shiki.bundledLanguagesAlias ?? {}),
     ]);
   } catch {
-    bundled = new Set();
+    bundled = new Set(alwaysKeep);
+    return langs.filter((l) => bundled.has(l) || bundled.has(l.toLowerCase()));
   }
-  // Always keep plaintext variants (special — don't require a bundle).
-  bundled.add('plaintext');
-  bundled.add('text');
-  bundled.add('txt');
-  bundled.add('ansi');
+  // Always keep plaintext variants.
+  for (const p of alwaysKeep) bundled.add(p);
   return langs.filter((l) => bundled.has(l) || bundled.has(l.toLowerCase()));
 }
 
@@ -120,6 +143,14 @@ async function buildTransformers(
   const transformers: unknown[] = [];
   void metaStr;
 
+  // If user wants full manual control, only push their transformers.
+  if (opts.disableAutoTransformers) {
+    if (opts.shiki.transformers) {
+      transformers.push(...opts.shiki.transformers);
+    }
+    return transformers;
+  }
+
   // Always remove the escape marker `// [\!code xxx]` first so other
   // notation transformers can read what's left.
   transformers.push(transformerRemoveNotationEscape());
@@ -129,6 +160,8 @@ async function buildTransformers(
     transformers.push(
       transformerMetaHighlight({
         className: 'pcb__line--hl',
+        // Issue #11 from competitor analysis: support zero-indexed line numbers.
+        zeroIndexed: opts.zeroIndexed === true,
       })
     );
   }
@@ -217,12 +250,98 @@ async function buildTransformers(
     }
   }
 
-  // User-provided transformers
-  if (opts.shiki.transformers) {
-    transformers.push(...opts.shiki.transformers);
+  // Custom notations: map custom // [!code xxx] markers to CSS classes.
+  // (Previously this was `void customNotations` — now actually wired up.)
+  if (opts.customNotations && Object.keys(opts.customNotations).length > 0) {
+    try {
+      const { transformerNotationMap } = await import('@shikijs/transformers');
+      // Build the classMap in the format transformerNotationMap expects:
+      // { markerName: [classList] }
+      const classMap: Record<string, string[]> = {};
+      for (const [marker, cls] of Object.entries(opts.customNotations)) {
+        classMap[marker] = [cls];
+      }
+      transformers.push(
+        (transformerNotationMap as (opts: { classMap: Record<string, string[]>; matchAlgorithm: 'v3' }) => unknown)({
+          classMap,
+          matchAlgorithm: 'v3',
+        })
+      );
+    } catch {
+      // transformerNotationMap not available in this @shikijs/transformers version.
+    }
+  }
+
+  // Remove comments from rendered code (// ..., # ..., /* ... */, <!-- ... -->)
+  if (opts.removeComments) {
+    try {
+      const { transformerRemoveComments } = await import('@shikijs/transformers');
+      transformers.push(transformerRemoveComments());
+    } catch {
+      // Module not available — skip silently.
+    }
+  }
+
+  // Remove line breaks (joins all lines into one)
+  if (opts.removeLineBreaks) {
+    try {
+      const { transformerRemoveLineBreak } = await import('@shikijs/transformers');
+      transformers.push(transformerRemoveLineBreak());
+    } catch {
+      // Module not available — skip silently.
+    }
+  }
+
+  // Programmatic per-line class assignment (transformerCompactLineOptions)
+  if (opts.lineOptions && opts.lineOptions.length > 0) {
+    try {
+      const { transformerCompactLineOptions } = await import('@shikijs/transformers');
+      transformers.push(transformerCompactLineOptions(opts.lineOptions));
+    } catch {
+      // Module not available — skip silently.
+    }
+  }
+
+  // ANSI escape sequence stripping for terminal output.
+  // We use a custom transformer (not in @shikijs/transformers) that walks
+  // all text nodes and removes `\x1b\[[0-9;]*[a-zA-Z]` sequences.
+  // Applied only when the lang is 'ansi' (which is in the default terminalLangs).
+  // (The actual per-block application happens in runShikiOnRawBlocks based on lang.)
+
+  // User-provided transformers — 'before' or 'after' (default) our auto-registered ones.
+  const userTransformers = opts.shiki.transformers ?? [];
+  if (opts.shiki.transformerOrder === 'before') {
+    transformers.unshift(...userTransformers);
+  } else {
+    transformers.push(...userTransformers);
   }
 
   return transformers;
+}
+
+/**
+ * Custom transformer that strips ANSI escape sequences from text nodes.
+ * Used for `lang: 'ansi'` blocks (terminal output with color codes).
+ */
+function createAnsiStripTransformer(): unknown {
+  return {
+    name: 'pcb:ansi-strip',
+    code(hast: unknown) {
+      // Walk all text nodes and strip \x1b\[[0-9;]*[a-zA-Z] sequences.
+      const visit = (node: unknown): void => {
+        if (!node || typeof node !== 'object') return;
+        const n = node as { type?: string; value?: string; children?: unknown[] };
+        if (n.type === 'text' && typeof n.value === 'string') {
+          n.value = n.value.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '');
+        }
+        if (Array.isArray(n.children)) {
+          for (const child of n.children) visit(child);
+        }
+      };
+      visit(hast);
+      return hast;
+    },
+  };
 }
 
 /**
@@ -246,14 +365,24 @@ export async function runShikiOnRawBlocks(
 
   if (targets.length === 0) return;
 
-  // Build theme keys (one or two)
+  // Build theme keys — supports single (string), dual ({light,dark}), and
+  // multi-theme (Record<string,string> with 3+ entries) for advanced use cases.
   const themeSpec = opts.shiki.theme;
-  const themeKeys: string[] =
-    typeof themeSpec === 'string'
-      ? [themeSpec]
-      : themeSpec
-        ? [themeSpec.dark, themeSpec.light]
-        : ['github-dark'];
+  let themeKeys: string[];
+  let isMultiTheme = false;
+  if (typeof themeSpec === 'string') {
+    themeKeys = [themeSpec];
+  } else if (themeSpec && typeof themeSpec === 'object') {
+    if ('light' in themeSpec && 'dark' in themeSpec && Object.keys(themeSpec).length === 2) {
+      themeKeys = [themeSpec.dark, themeSpec.light];
+    } else {
+      // Multi-theme: Record<string, string> with 3+ entries.
+      themeKeys = Object.values(themeSpec);
+      isMultiTheme = true;
+    }
+  } else {
+    themeKeys = ['github-dark'];
+  }
 
   // Collect all langs needed for these blocks
   const langSet = new Set<string>(opts.shiki.langs ?? []);
@@ -287,7 +416,7 @@ export async function runShikiOnRawBlocks(
   const loaded = new Set(highlighter.getLoadedLanguages());
   const missing = [...langSet].filter((l) => !loaded.has(l));
   if (missing.length > 0) {
-    await Promise.allSettled(
+    const results = await Promise.allSettled(
       missing.map((l) => {
         try {
           return Promise.resolve(highlighter.loadLanguage(l));
@@ -296,10 +425,27 @@ export async function runShikiOnRawBlocks(
         }
       })
     );
+    // Log failed language loads (competitor analysis: EC does this, improves DX).
+    const failed: string[] = [];
+    results.forEach((r, i) => {
+      if (r.status === 'rejected') failed.push(missing[i]);
+    });
+    if (failed.length > 0) {
+      const logger = opts.logger ?? console;
+      logger.warn(
+        `[rehype-perfect-code-blocks] Failed to load languages: ${failed.join(', ')}. ` +
+          `Falling back to plaintext for these blocks. ` +
+          `Check for typos or install the language grammar.`
+      );
+    }
   }
 
   // Apply language aliases (e.g., { ts: 'typescript' }).
   const langAlias = opts.languageAliases ?? {};
+  // Resolve the logger once.
+  const logger = opts.logger ?? console;
+  // Track which langs we've already warned about (avoid duplicate warnings).
+  const warnedLangs = new Set<string>();
 
   for (const pre of targets) {
     const code = pre.children.find(
@@ -307,7 +453,14 @@ export async function runShikiOnRawBlocks(
     );
     if (!code) continue;
 
-    const text = extractText(code);
+    // Normalize line endings: \r\n and \r → \n (prevents \r artifacts in output).
+    let text = extractText(code).replace(/\r\n?/g, '\n');
+
+    // tabWidth normalization: replace tabs with N spaces before tokenization.
+    if (opts.tabWidth && opts.tabWidth > 0) {
+      text = text.replace(/\t/g, ' '.repeat(opts.tabWidth));
+    }
+
     const langClass = (code.properties?.className as string[] | undefined)?.[0] ?? '';
     const rawLang = (langClass.match(/^language-(.+)$/) ?? [])[1] ?? 'plaintext';
     const lang = langAlias[rawLang] ?? rawLang;
@@ -316,10 +469,31 @@ export async function runShikiOnRawBlocks(
       (pre.properties?.dataMeta as string | undefined) ??
       '';
 
+    // Terminal <placeholder> workaround: Shiki mis-highlights shell snippets
+    // containing `<user>@<host>`. Temporarily replace `<...>` with a sentinel,
+    // then restore after tokenization.
+    const isTerminalLang = opts.terminalLangs.includes(lang);
+    let placeholderMap: Map<string, string> | null = null;
+    if (isTerminalLang && /<([^>]*[^>\s])>/.test(text)) {
+      placeholderMap = new Map();
+      let i = 0;
+      text = text.replace(/<([^>]*[^>\s])>/g, (match, inner) => {
+        const sentinel = `\u0000PCB_PH_${i++}\u0000`;
+        placeholderMap!.set(sentinel, `<${inner}>`);
+        return sentinel;
+      });
+    }
+
     const transformers = await buildTransformers(opts, metaStr);
 
-    // Build codeToHast/codeToHtml options. Use `themes` (plural) for dual-theme output
-    // so Shiki emits `--shiki-light` / `--shiki-dark` CSS vars.
+    // For 'ansi' lang, add the ANSI escape-sequence stripper transformer.
+    if (lang === 'ansi') {
+      transformers.push(createAnsiStripTransformer());
+    }
+
+    // Build codeToHast/codeToHtml options. Use `themes` (plural) for dual-theme
+    // and multi-theme output so Shiki emits `--shiki-light` / `--shiki-dark` /
+    // `--shiki-<name>` CSS vars.
     const shikiOpts: Record<string, unknown> = {
       lang,
       meta: { __raw: metaStr },
@@ -327,6 +501,11 @@ export async function runShikiOnRawBlocks(
     };
     if (typeof themeSpec === 'string') {
       shikiOpts.theme = themeSpec;
+    } else if (isMultiTheme) {
+      // Multi-theme (3+ themes): pass the full Record as `themes`.
+      shikiOpts.themes = themeSpec;
+      // Don't inline any single theme — emit all variants as CSS vars.
+      shikiOpts.defaultColor = false;
     } else {
       shikiOpts.themes = themeSpec;
       shikiOpts.defaultColor = 'dark'; // tells Shiki which color to inline by default
@@ -344,29 +523,57 @@ export async function runShikiOnRawBlocks(
         // `className`, `aria-hidden` instead of `ariaHidden`). Normalize them
         // so the rest of our pipeline (which expects hast property names) works.
         normalizeHast(hastRoot);
+        // Restore terminal <placeholder> sentinels back to original text.
+        if (placeholderMap) {
+          restorePlaceholders(hastRoot, placeholderMap);
+        }
         newPre = hastRoot.children.find(
           (c): c is Element => c.type === 'element' && c.tagName === 'pre'
         ) ?? null;
       } else {
         const html = highlighter.codeToHtml(text, shikiOpts);
-        const fragment = fromHtml(html, { fragment: true });
+        let htmlOut = html;
+        if (placeholderMap) {
+          for (const [sentinel, original] of placeholderMap) {
+            htmlOut = htmlOut.split(sentinel).join(original);
+          }
+        }
+        const fragment = fromHtml(htmlOut, { fragment: true });
         newPre = fragment.children.find(
           (c): c is Element => c.type === 'element' && c.tagName === 'pre'
         ) ?? null;
       }
-    } catch {
+    } catch (err) {
+      // Log unknown-language fallbacks (once per lang).
+      const langKey = lang;
+      if (!warnedLangs.has(langKey) && langKey !== 'plaintext') {
+        warnedLangs.add(langKey);
+        logger.warn(
+          `[rehype-perfect-code-blocks] Failed to tokenize language "${langKey}" ` +
+            `(${err instanceof Error ? err.message : String(err)}). Falling back to plaintext.`
+        );
+      }
       // Fallback: plaintext
       try {
         const fallbackOpts = { ...shikiOpts, lang: 'plaintext' };
         if (useHast) {
           const hastRoot = highlighter.codeToHast(text, fallbackOpts) as { type: 'root'; children: Element[] };
           normalizeHast(hastRoot);
+          if (placeholderMap) {
+            restorePlaceholders(hastRoot, placeholderMap);
+          }
           newPre = hastRoot.children.find(
             (c): c is Element => c.type === 'element' && c.tagName === 'pre'
           ) ?? null;
         } else {
           const html = highlighter.codeToHtml(text, fallbackOpts);
-          const fragment = fromHtml(html, { fragment: true });
+          let htmlOut = html;
+          if (placeholderMap) {
+            for (const [sentinel, original] of placeholderMap) {
+              htmlOut = htmlOut.split(sentinel).join(original);
+            }
+          }
+          const fragment = fromHtml(htmlOut, { fragment: true });
           newPre = fragment.children.find(
             (c): c is Element => c.type === 'element' && c.tagName === 'pre'
           ) ?? null;
@@ -463,5 +670,30 @@ function normalizeHast(node: unknown): void {
   }
   if (Array.isArray(n.children)) {
     for (const child of n.children) normalizeHast(child);
+  }
+}
+
+/**
+ * Restore terminal <placeholder> sentinels back to their original text.
+ * Walks all text nodes in the HAST tree and replaces sentinel strings
+ * with the original `<...>` content.
+ *
+ * Used after Shiki tokenization to undo the temporary sentinel substitution
+ * we applied to prevent Shiki from mis-highlighting `<user>@<host>` patterns
+ * in shell/terminal blocks.
+ */
+function restorePlaceholders(node: unknown, map: Map<string, string>): void {
+  if (!node || typeof node !== 'object') return;
+  const n = node as { type?: string; value?: string; children?: unknown[] };
+  if (n.type === 'text' && typeof n.value === 'string') {
+    let value = n.value;
+    for (const [sentinel, original] of map) {
+      // Use split/join to avoid regex special-char issues with sentinels.
+      value = value.split(sentinel).join(original);
+    }
+    n.value = value;
+  }
+  if (Array.isArray(n.children)) {
+    for (const child of n.children) restorePlaceholders(child, map);
   }
 }
