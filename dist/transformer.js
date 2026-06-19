@@ -19,6 +19,7 @@
  */
 import { visit } from 'unist-util-visit';
 import { parseMeta } from './meta.js';
+import { wordDiff, hasChanges } from './word-diff.js';
 /** Default inline SVG copy icon (16x16 GitHub octicon copy). */
 const DEFAULT_COPY_ICON = `<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z"/><path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z"/></svg>`;
 const DEFAULT_SUCCESS_ICON = `<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z"/></svg>`;
@@ -172,6 +173,7 @@ export function rehypePerfectCodeBlocks(userOptions = {}) {
         lineNumbersStart: 1,
         highlight: true,
         diff: true,
+        wordDiff: false,
         focus: true,
         errorLevels: true,
         wrap: false,
@@ -403,9 +405,17 @@ async function transformPre(pre, opts) {
     const lineSpans = toLineSpans(codeChild, resolved, opts);
     // Filter out trailing empty line (from trailing newline in source).
     const filteredLines = filterTrailingEmpty(lineSpans);
+    // Pattern 5 (selective adoption from expressive-code): word-level diff.
+    // When `wordDiff` is enabled and `diff` is also true, scan for adjacent
+    // `pcb__line--del` / `pcb__line--add` pairs and wrap the changed words
+    // in `<mark class="pcb__word-diff--del">` / `<mark class="pcb__word-diff--add">`
+    // elements so readers can see exactly what changed within each diff line.
+    const linesForCollapse = opts.wordDiff && opts.diff
+        ? applyWordDiff(filteredLines)
+        : filteredLines;
     // Apply per-line collapsible sections (meta `collapse="5-12,20-30"`).
     // Wraps matching line ranges in <details><summary>N collapsed lines</summary>...</details>.
-    const collapsedLines = wrapCollapsedSections(filteredLines, meta, opts, resolved.lineNumbersStart);
+    const collapsedLines = wrapCollapsedSections(linesForCollapse, meta, opts, resolved.lineNumbersStart);
     // Call onVisitLine / onVisitHighlightedLine hooks.
     filteredLines.forEach((line, i) => {
         const lineNumber = i + resolved.lineNumbersStart;
@@ -455,6 +465,10 @@ async function transformPre(pre, opts) {
     // Build code <pre><code> with line spans.
     // When keepBackground is true, preserve Shiki's inline `style` (which includes
     // background-color + color from the theme) on the new <pre>.
+    // Pattern 2: Always preserve our theme-aware --pcb-* defaults (set by
+    // shiki.ts:getThemeAwareDefaults) even when keepBackground is false —
+    // these are NOT Shiki's background/color styles, they're our CSS variable
+    // defaults that make the code block legible with any theme.
     const newCode = h('code', codeDataProps, collapsedLines);
     const newPreProps = {};
     if (preLevelClasses.size > 0) {
@@ -462,6 +476,17 @@ async function transformPre(pre, opts) {
     }
     if (opts.keepBackground && pre.properties?.style) {
         newPreProps.style = pre.properties.style;
+    }
+    else if (pre.properties?.style) {
+        // keepBackground is false — strip Shiki's bg/color inline styles but
+        // preserve our --pcb-* defaults (Pattern 2).
+        const originalStyle = pre.properties.style;
+        const pcbVars = originalStyle
+            .split(';')
+            .filter((part) => part.trim().startsWith('--pcb-'))
+            .join(';');
+        if (pcbVars)
+            newPreProps.style = pcbVars;
     }
     // Don't carry over Shiki's tabindex — it causes unwanted focus rings on the
     // inner <pre>. The figure itself is not focusable; only the copy button is.
@@ -1051,5 +1076,87 @@ function h(tag, props = {}, children = []) {
 }
 function hText(value) {
     return { type: 'text', value };
+}
+/* ---------- Pattern 5: word-level diff (selective adoption from expressive-code) ---------- */
+/**
+ * Extract the plain text content of a line span (for diff comparison).
+ * Walks the line's children and concatenates all text values.
+ */
+function extractLineText(line) {
+    const out = [];
+    const walk = (node) => {
+        if (node.type === 'text') {
+            out.push(node.value);
+        }
+        else if (node.type === 'element') {
+            for (const child of node.children)
+                walk(child);
+        }
+    };
+    for (const child of line.children)
+        walk(child);
+    return out.join('');
+}
+/**
+ * Find the `.pcb__code` child of a line span and replace its children
+ * with the given replacement nodes (preserving the `.pcb__code` wrapper).
+ */
+function replaceCodeChildren(line, newChildren) {
+    const codeChild = line.children.find((c) => c.type === 'element' &&
+        c.tagName === 'span' &&
+        (c.properties?.className ?? []).includes('pcb__code'));
+    if (codeChild) {
+        codeChild.children = newChildren;
+    }
+}
+/**
+ * Apply word-level diff highlighting to adjacent `pcb__line--del` / `pcb__line--add`
+ * pairs. For each pair, compute the per-word diff between the del line's text and
+ * the add line's text, then wrap changed words in `<mark>` elements.
+ *
+ * Only adjacent del→add pairs are processed (the common case for unified diffs).
+ * Standalone del or add lines (no adjacent counterpart) are left unchanged.
+ *
+ * This is a post-processing step that runs after `toLineSpans` and before
+ * `wrapCollapsedSections`. It mutates the line spans in place.
+ */
+function applyWordDiff(lines) {
+    for (let i = 0; i < lines.length - 1; i++) {
+        const cur = lines[i];
+        const next = lines[i + 1];
+        const curClasses = cur.properties?.className ?? [];
+        const nextClasses = next.properties?.className ?? [];
+        const curIsDel = curClasses.includes('pcb__line--del');
+        const nextIsAdd = nextClasses.includes('pcb__line--add');
+        if (!curIsDel || !nextIsAdd)
+            continue;
+        const oldText = extractLineText(cur);
+        const newText = extractLineText(next);
+        const tokens = wordDiff(oldText, newText);
+        if (!hasChanges(tokens))
+            continue;
+        // Build replacement children for the del line: wrap 'del' tokens in <mark>,
+        // pass 'equal' and 'add' tokens through as plain text (add tokens don't
+        // belong in the del line).
+        const delChildren = [];
+        const addChildren = [];
+        for (const token of tokens) {
+            if (token.type === 'equal') {
+                delChildren.push(hText(token.text));
+                addChildren.push(hText(token.text));
+            }
+            else if (token.type === 'del') {
+                delChildren.push(h('mark', { className: ['pcb__word-diff', 'pcb__word-diff--del'] }, [hText(token.text)]));
+                // del tokens don't appear in the add line
+            }
+            else if (token.type === 'add') {
+                addChildren.push(h('mark', { className: ['pcb__word-diff', 'pcb__word-diff--add'] }, [hText(token.text)]));
+                // add tokens don't appear in the del line
+            }
+        }
+        replaceCodeChildren(cur, delChildren);
+        replaceCodeChildren(next, addChildren);
+    }
+    return lines;
 }
 //# sourceMappingURL=transformer.js.map

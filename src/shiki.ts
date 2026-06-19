@@ -17,6 +17,7 @@ import type { Element, Root } from 'hast';
 import { fromHtml } from 'hast-util-from-html';
 import { visit } from 'unist-util-visit';
 import type { PerfectCodeOptions } from './types.js';
+import { computeThemeAwareDefaults } from './color-utils.js';
 import {
   transformerNotationDiff,
   transformerNotationFocus,
@@ -66,6 +67,58 @@ type ShikiHighlighter = {
 
 const highlighterCache = new Map<string, Promise<ShikiHighlighter>>();
 
+// ───────────────────────────────────────────────────────────────────────────
+// Pattern 1 (adopted from expressive-code): Mutually exclusive highlighter
+// task queue.
+//
+// All highlighter operations (createHighlighter, loadLanguage, loadTheme,
+// codeToHast, codeToHtml) are wrapped in `runHighlighterTask(() => ...)`.
+// This serializes them globally, preventing race conditions in parallel
+// static-site builds where multiple unified pipelines share the same
+// module-level highlighter cache.
+//
+// Without this queue, if pipeline A calls `loadLanguage('ts')` and pipeline
+// B calls `codeToHast(code, { lang: 'ts' })` on the same tick, B may run
+// before A's load completes and fall back to plaintext — the "issue #13"
+// class of bug. The queue makes all operations globally sequential.
+//
+// Tradeoff: slight throughput reduction in parallel builds; correctness >
+// throughput for syntax highlighting.
+// ───────────────────────────────────────────────────────────────────────────
+
+type QueueTask = { taskFn: () => Promise<unknown>; resolve: (v: unknown) => void; reject: (e: unknown) => void };
+const taskQueue: QueueTask[] = [];
+let processingQueue = false;
+
+function processQueue(): void {
+  const next = taskQueue.shift();
+  if (!next) {
+    processingQueue = false;
+    return;
+  }
+  Promise.resolve()
+    .then(() => next.taskFn())
+    .then(
+      (result) => { next.resolve(result); processQueue(); },
+      (err) => { next.reject(err); processQueue(); }
+    );
+}
+
+/**
+ * Run a task function inside the mutually exclusive highlighter queue.
+ * All calls are serialized globally — the next task starts only after the
+ * current one resolves or rejects.
+ */
+export function runHighlighterTask<T>(taskFn: () => Promise<T>): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    taskQueue.push({ taskFn: taskFn as () => Promise<unknown>, resolve: resolve as (v: unknown) => void, reject });
+    if (!processingQueue) {
+      processingQueue = true;
+      processQueue();
+    }
+  });
+}
+
 async function getHighlighter(
   themeKeys: string[],
   langs: string[],
@@ -79,7 +132,9 @@ async function getHighlighter(
   const cacheKey = `${themeKeys.join(',')}|${[...safeLangs].sort().join(',')}|${regexEngine ?? 'onig'}`;
   let promise = highlighterCache.get(cacheKey);
   if (!promise) {
-    promise = (async () => {
+    // Wrap the highlighter creation in the task queue so concurrent
+    // pipeline instances don't race on Shiki's internal singleton state.
+    promise = runHighlighterTask(async () => {
       if (userGetHighlighter) {
         return (await userGetHighlighter({ themes: themeKeys, langs: safeLangs })) as ShikiHighlighter;
       }
@@ -100,10 +155,37 @@ async function getHighlighter(
       }
       const all = await shiki.createHighlighter(createOpts as unknown as Parameters<typeof shiki.createHighlighter>[0]);
       return all as unknown as ShikiHighlighter;
-    })();
+    });
     highlighterCache.set(cacheKey, promise);
   }
   return promise;
+}
+
+/**
+ * Pattern 3 (adopted from VitePress): Dispose all cached highlighters and
+ * clear the cache. Call this in long-running dev servers when the theme
+ * changes, or during cleanup of a build pipeline, to release the WASM
+ * engine + loaded grammars + theme cache held by Shiki.
+ *
+ * After calling this, the next render will create a fresh highlighter.
+ *
+ * @example
+ *   // In a Vite dev server shutdown hook:
+ *   import { disposeHighlighter } from '@dr-ishaan/rehype-perfect-code-blocks';
+ *   server.http2.close(() => disposeHighlighter());
+ */
+export function disposeHighlighter(): void {
+  for (const promise of highlighterCache.values()) {
+    // The promise may still be pending; if so, attach a dispose-on-resolve.
+    promise.then(
+      (h) => {
+        const maybeDisposable = h as unknown as { dispose?: () => void };
+        if (typeof maybeDisposable.dispose === 'function') maybeDisposable.dispose();
+      },
+      () => { /* ignore — failed highlighters are already gone */ }
+    );
+  }
+  highlighterCache.clear();
 }
 
 /** Filter out languages that aren't bundled with Shiki (avoids sync throws). */
@@ -421,17 +503,22 @@ export async function runShikiOnRawBlocks(
   // Lazily load any langs not yet loaded. Shiki's `loadLanguage` throws
   // synchronously for bundled-but-unknown langs (e.g. typos), so wrap each
   // call in its own try/catch and use Promise.allSettled to swallow rejects.
+  //
+  // Wrapped in `runHighlighterTask` so concurrent pipeline instances don't
+  // race on Shiki's internal language registry. (Pattern 1)
   const loaded = new Set(highlighter.getLoadedLanguages());
   const missing = [...langSet].filter((l) => !loaded.has(l));
   if (missing.length > 0) {
-    const results = await Promise.allSettled(
-      missing.map((l) => {
-        try {
-          return Promise.resolve(highlighter.loadLanguage(l));
-        } catch {
-          return Promise.resolve();
-        }
-      })
+    const results = await runHighlighterTask(() =>
+      Promise.allSettled(
+        missing.map((l) => {
+          try {
+            return Promise.resolve(highlighter.loadLanguage(l));
+          } catch {
+            return Promise.resolve();
+          }
+        })
+      )
     );
     // Log failed language loads (competitor analysis: EC does this, improves DX).
     const failed: string[] = [];
@@ -642,9 +729,69 @@ export async function runShikiOnRawBlocks(
         // language-* class and the Shiki lang we actually used.
         (newCode.properties as Record<string, unknown>).dataLanguage = normalizedRawLang;
       }
+
+      // Pattern 2: Apply theme-aware --pcb-* defaults as inline styles on the
+      // <pre> element. The static dist/styles.css ships its own defaults, but
+      // those are generic; the runtime overrides them here based on the loaded
+      // Shiki theme so colors look good with ANY theme out of the box.
+      //
+      // We compute the defaults once per (theme,lang) combination and cache
+      // them on a WeakMap keyed by the highlighter to avoid recomputing per block.
+      if (typeof newPre.properties === 'object' && newPre.properties !== null) {
+        const themeDefaults = getThemeAwareDefaults(highlighter, themeKeys);
+        if (themeDefaults) {
+          const existingStyle = (newPre.properties as { style?: string }).style;
+          // Prepend our defaults so user-provided inline styles (if any) win.
+          (newPre.properties as { style?: string }).style = themeDefaults + (existingStyle ? `;${existingStyle}` : '');
+        }
+      }
+
       Object.assign(pre, newPre);
     }
   }
+}
+
+// Cache theme-aware defaults per highlighter instance + theme keys, so we
+// don't recompute them for every code block on the page.
+const themeDefaultsCache = new WeakMap<object, Map<string, string>>();
+
+function getThemeAwareDefaults(highlighter: ShikiHighlighter, themeKeys: string[]): string {
+  // Use the highlighter object as the WeakMap key.
+  const hlKey = highlighter as unknown as object;
+  let perHl = themeDefaultsCache.get(hlKey);
+  if (!perHl) {
+    perHl = new Map();
+    themeDefaultsCache.set(hlKey, perHl);
+  }
+  const cacheKey = themeKeys.slice().sort().join(',');
+  let cached = perHl.get(cacheKey);
+  if (cached !== undefined) return cached;
+
+  // Get the theme object from the highlighter.
+  // Use the first theme key (typically the dark theme in dual-theme config).
+  let theme: unknown = null;
+  try {
+    // highlighter.getTheme() returns the resolved theme registration.
+    const themeName = themeKeys[0];
+    const hlAny = highlighter as unknown as { getTheme?: (name: string) => unknown };
+    if (themeName && typeof hlAny.getTheme === 'function') {
+      theme = hlAny.getTheme(themeName);
+    }
+  } catch {
+    theme = null;
+  }
+
+  let defaults = '';
+  if (theme) {
+    try {
+      defaults = computeThemeAwareDefaults(theme);
+    } catch {
+      defaults = '';
+    }
+  }
+
+  perHl.set(cacheKey, defaults);
+  return defaults;
 }
 
 function hasShikiMarker(className: unknown): boolean {

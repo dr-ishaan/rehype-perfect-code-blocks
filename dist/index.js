@@ -17,9 +17,12 @@
  * plugin with style/script injection and automatic Shiki integration.
  */
 import { rehypePerfectCodeBlocks as transformer } from './transformer.js';
-import { runShikiOnRawBlocks } from './shiki.js';
+import { runShikiOnRawBlocks, disposeHighlighter, runHighlighterTask } from './shiki.js';
 import { remarkPreserveCodeMeta } from './remark.js';
+import { wordDiff, hasChanges } from './word-diff.js';
 export { remarkPreserveCodeMeta };
+export { disposeHighlighter, runHighlighterTask };
+export { wordDiff, hasChanges };
 export const rehypePerfectCodeBlocks = (options = {}) => {
     const engine = options.engine ?? 'auto';
     const opts = options;
@@ -78,6 +81,7 @@ function resolveDefaults(opts) {
         lineNumbersStart: opts.lineNumbersStart ?? 1,
         highlight: opts.highlight ?? true,
         diff: opts.diff ?? true,
+        wordDiff: opts.wordDiff ?? false,
         focus: opts.focus ?? true,
         errorLevels: opts.errorLevels ?? true,
         wrap: opts.wrap ?? false,

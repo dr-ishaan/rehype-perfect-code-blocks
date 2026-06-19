@@ -20,11 +20,16 @@
 import type { Plugin } from 'unified';
 import type { Root } from 'hast';
 import { rehypePerfectCodeBlocks as transformer } from './transformer.js';
-import { runShikiOnRawBlocks } from './shiki.js';
+import { runShikiOnRawBlocks, disposeHighlighter, runHighlighterTask } from './shiki.js';
 import { remarkPreserveCodeMeta } from './remark.js';
+import { wordDiff, hasChanges } from './word-diff.js';
+import type { DiffToken } from './word-diff.js';
 import type { PerfectCodeOptions } from './types.js';
 
 export { remarkPreserveCodeMeta };
+export { disposeHighlighter, runHighlighterTask };
+export { wordDiff, hasChanges };
+export type { DiffToken };
 
 export const rehypePerfectCodeBlocks: Plugin<[PerfectCodeOptions?], Root> =
   (options = {}) => {
@@ -90,6 +95,7 @@ function resolveDefaults(opts: PerfectCodeOptions): Required<PerfectCodeOptions>
     lineNumbersStart: opts.lineNumbersStart ?? 1,
     highlight: opts.highlight ?? true,
     diff: opts.diff ?? true,
+    wordDiff: opts.wordDiff ?? false,
     focus: opts.focus ?? true,
     errorLevels: opts.errorLevels ?? true,
     wrap: opts.wrap ?? false,

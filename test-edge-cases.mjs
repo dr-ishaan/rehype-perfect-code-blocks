@@ -65,7 +65,8 @@ const tests = [
     opts: {},
     check: (html) => {
       const hasFigure = html.includes('class="pcb"');
-      const hasPre = html.includes('<pre>');
+      // <pre> may have a style attribute (Pattern 2: theme-aware --pcb-* defaults)
+      const hasPre = /<pre(?:\s[^>]*)?>/.test(html);
       const hasCode = html.includes('<code') && (html.includes('<code>') || html.includes('<code '));
       const hasBar = html.includes('pcb__bar');
       return check('basic block',
@@ -315,7 +316,7 @@ const tests = [
     title: 'empty code block',
     md: '```js\n```',
     opts: {},
-    check: (html) => html.includes('class="pcb"') && html.includes('<pre>'),
+    check: (html) => html.includes('class="pcb"') && /<pre(?:\s[^>]*)?>/.test(html),
   },
 
   // ---------- 28. Single-line block ----------

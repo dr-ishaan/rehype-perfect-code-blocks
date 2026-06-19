@@ -39,6 +39,18 @@ export interface PerfectCodeOptions {
     highlight?: boolean;
     /** Enable +/- diff line coloring AND // [!code ++] / [!code --] notation. Default: true */
     diff?: boolean;
+    /**
+     * Pattern 5 (selective adoption from expressive-code): Enable word-level diff
+     * highlighting. When `diff` is also true and a code block contains adjacent
+     * `+`/`-` diff lines, the plugin computes the per-word diff between the
+     * removed and added lines and wraps changed words in `<mark class="pcb__word-diff--add">`
+     * / `<mark class="pcb__word-diff--del">` elements. This makes it easy for
+     * readers to see exactly what changed, not just which lines changed.
+     *
+     * Uses a simple LCS-based word diff algorithm (no external deps).
+     * Default: false (opt-in; adds a small per-block cost when diff lines are present).
+     */
+    wordDiff?: boolean;
     /** Enable // [!code focus] notation. Default: true */
     focus?: boolean;
     /** Enable // [!code error] / [!code warning] notations. Default: true */
