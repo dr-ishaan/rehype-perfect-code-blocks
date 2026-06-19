@@ -10,6 +10,7 @@
  *   - Falls back to execCommand for non-secure contexts
  *   - Respects `prefers-reduced-motion` (the CSS handles the animation)
  *   - Reads `data-done-label`, `data-success-icon`, `data-feedback-duration` from the button
+ *   - Strips leading `#` comment lines when `data-strip-comments` is set (terminal preset)
  *   - Announces "Copied" to screen readers via an aria-live region (WCAG 4.1.2)
  *   - Hides copy button when JS is disabled (via .no-js class on <html>)
  */
@@ -50,6 +51,15 @@ export const COPY_SCRIPT = `
     return btn.querySelector('svg');
   }
 
+  // Strip leading comment lines (e.g. shell prompts like "# comment") from
+  // the text before copying. Used for terminal-preset blocks where the
+  // displayed code may include comments the user doesn't want on the clipboard.
+  function stripComments(text) {
+    // Strip lines that start with optional whitespace followed by # (shell),
+    // // (C-style), or REM (Windows batch). Keep everything else.
+    return text.replace(/^[ \\t]*(?:#|\\/\\/|REM\\b).*$/gm, '').replace(/\\n{3,}/g, '\\n\\n').trim();
+  }
+
   document.addEventListener('click', function (e) {
     var btn = e.target && e.target.closest && e.target.closest('.pcb__copy');
     if (!btn) return;
@@ -60,11 +70,15 @@ export const COPY_SCRIPT = `
     var done = btn.getAttribute('data-done-label') || 'copied!';
     var duration = parseInt(btn.getAttribute('data-feedback-duration') || '1600', 10);
     var successIconHtml = btn.getAttribute('data-success-icon');
+    var stripCommentsFlag = btn.hasAttribute('data-strip-comments');
 
     var label = findLabel(btn);
     var icon = findIcon(btn);
     var originalLabel = label ? label.textContent : null;
     var originalIconHtml = icon ? icon.outerHTML : null;
+
+    var rawText = code.innerText;
+    var textToCopy = stripCommentsFlag ? stripComments(rawText) : rawText;
 
     var finish = function () {
       btn.classList.add('pcb__copy--done');
@@ -93,14 +107,14 @@ export const COPY_SCRIPT = `
     };
 
     if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(code.innerText).then(finish).catch(fallback);
+      navigator.clipboard.writeText(textToCopy).then(finish).catch(fallback);
     } else {
       fallback();
     }
 
     function fallback() {
       var ta = document.createElement('textarea');
-      ta.value = code.innerText;
+      ta.value = textToCopy;
       ta.style.position = 'fixed';
       ta.style.opacity = '0';
       document.body.appendChild(ta);

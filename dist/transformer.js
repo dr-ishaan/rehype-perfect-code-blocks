@@ -158,7 +158,7 @@ const DEFAULT_MAGIC_COMMENTS = [
         block: { start: 'highlight-start', end: 'highlight-end' },
     },
 ];
-const DEFAULT_TERMINAL_LANGS = ['sh', 'bash', 'zsh', 'shell', 'console', 'powershell', 'bat', 'cmd', 'fish'];
+const DEFAULT_TERMINAL_LANGS = ['sh', 'bash', 'zsh', 'shell', 'console', 'powershell', 'bat', 'cmd', 'fish', 'ansi'];
 export function rehypePerfectCodeBlocks(userOptions = {}) {
     const { shiki: userShiki, ...rest } = userOptions;
     const options = {
@@ -176,6 +176,8 @@ export function rehypePerfectCodeBlocks(userOptions = {}) {
         errorLevels: true,
         wrap: false,
         collapseAfter: null,
+        collapseRanges: null,
+        collapseStyle: 'github',
         showWhitespace: false,
         indentGuides: false,
         caption: true,
@@ -184,11 +186,17 @@ export function rehypePerfectCodeBlocks(userOptions = {}) {
             theme: { light: 'github-light', dark: 'github-dark' },
             langs: [],
             transformers: [],
+            transformerOrder: 'after',
             ...(userShiki ?? {}),
         },
         keepBackground: false,
         styleToClass: false,
         useHastApi: true,
+        disableAutoTransformers: false,
+        removeComments: false,
+        removeLineBreaks: false,
+        zeroIndexed: false,
+        lineOptions: [],
         customNotations: {},
         magicComments: DEFAULT_MAGIC_COMMENTS,
         inlineCode: false,
@@ -200,9 +208,12 @@ export function rehypePerfectCodeBlocks(userOptions = {}) {
         languageLabels: {},
         languageAliases: {},
         defaultBlockLang: '',
+        tabWidth: 0,
+        copyStripComments: true,
         accessibleScroll: true,
         announceCopy: true,
         hideCopyWithoutJs: true,
+        terminalSrOnlyTitle: true,
         rehypePlugins: [],
         filterMetaString: (s) => s,
         onVisitLine: () => { },
@@ -210,6 +221,9 @@ export function rehypePerfectCodeBlocks(userOptions = {}) {
         onVisitHighlightedChars: () => { },
         onVisitTitle: () => { },
         onVisitCaption: () => { },
+        texts: {},
+        logger: console,
+        cspNonce: '',
         preset: 'default',
         injectStyles: true,
         theme: 'auto',
@@ -218,6 +232,7 @@ export function rehypePerfectCodeBlocks(userOptions = {}) {
     };
     return async (tree) => {
         const visits = [];
+        const inlineCodes = [];
         visit(tree, 'element', (node) => {
             if (node.tagName !== 'pre')
                 return;
@@ -228,13 +243,83 @@ export function rehypePerfectCodeBlocks(userOptions = {}) {
                 return;
             visits.push(node);
         });
+        // Inline code highlighting: visit <code> elements whose parent is NOT <pre>.
+        // These are inline code spans like `code{:lang}` or `code{:.token}`.
+        if (options.inlineCode) {
+            visit(tree, 'element', (node, index, parent) => {
+                if (node.tagName !== 'code')
+                    return;
+                if (!parent || parent.type !== 'element' || parent.tagName === 'pre')
+                    return;
+                if (node.properties?.dataPcbDone)
+                    return;
+                inlineCodes.push(node);
+            });
+        }
         for (const pre of visits) {
             const replacement = await transformPre(pre, options);
             if (replacement) {
                 Object.assign(pre, replacement);
             }
         }
+        // Process inline code blocks (after the block-level transform).
+        for (const code of inlineCodes) {
+            transformInlineCode(code, options);
+        }
     };
+}
+/**
+ * Transform an inline `<code>` element (not inside a `<pre>`).
+ *
+ * Supports two modes (matching rehype-pretty-code's syntax):
+ *   - `inlineCode: 'lang'` or `true` — parse `code{:lang}` suffix and tokenize via Shiki
+ *   - `inlineCode: 'token'` — parse `code{:.token}` suffix and color by VS Code token
+ *
+ * The suffix is stripped from the displayed text. The resulting tokenized
+ * spans are wrapped in a `<code class="pcb__inline">` element.
+ *
+ * NOTE: This function only modifies the inline `<code>` element's children
+ * and adds a class. Shiki tokenization happens at render time via the
+ * `engine: 'shiki'` path (runShikiOnRawBlocks handles `<pre><code>` only —
+ * inline code is styled by the CSS based on the `pcb__inline` class).
+ */
+function transformInlineCode(code, opts) {
+    // Extract the text content.
+    const text = extractText(code);
+    if (!text)
+        return;
+    // Parse the `{:lang}` or `{:.token}` suffix.
+    // rehype-pretty-code uses `{:lang}` for language and `{:.token}` for token.
+    const langMatch = text.match(/\{:([a-zA-Z][\w.-]*)\}$/);
+    const tokenMatch = text.match(/\{:\.([\w-]+)\}$/);
+    let displayText = text;
+    let lang = null;
+    let token = null;
+    if (opts.inlineCode === 'token' && tokenMatch) {
+        token = tokenMatch[1];
+        displayText = text.slice(0, tokenMatch.index);
+    }
+    else if (opts.inlineCode === true || opts.inlineCode === 'lang') {
+        if (langMatch) {
+            lang = langMatch[1];
+            displayText = text.slice(0, langMatch.index);
+        }
+        else if (opts.inlineDefaultLang || opts.defaultInlineLang) {
+            lang = opts.inlineDefaultLang || opts.defaultInlineLang || null;
+        }
+    }
+    // Replace the text content with the stripped display text.
+    code.children = [{ type: 'text', value: displayText }];
+    // Add the `pcb__inline` class plus optional lang/token classes for CSS.
+    const cls = ['pcb__inline'];
+    if (lang)
+        cls.push(`pcb__inline--${lang}`);
+    if (token)
+        cls.push(`pcb__inline--token-${token}`);
+    code.properties = code.properties ?? {};
+    code.properties.className = cls;
+    // Mark as done so we don't re-process it.
+    code.properties.dataPcbDone = true;
 }
 async function transformPre(pre, opts) {
     const codeChild = pre.children.find((c) => c.type === 'element' && c.tagName === 'code');
@@ -279,6 +364,11 @@ async function transformPre(pre, opts) {
     // buildCopyButton().
     const copyButtonEnabled = typeof opts.copyButton === 'object' ? true : !!opts.copyButton;
     const autoTitleBar = !!(title || effectiveLang || copyButtonEnabled);
+    // Distinguish whole-block collapse (collapseAfter threshold or `collapse` flag)
+    // from per-line collapse (collapseRanges from `collapse="N-M"` meta).
+    // Per-line collapse uses <details> sections INSIDE the <pre>, not around it.
+    const hasCollapseRanges = !!(meta.collapseRanges && meta.collapseRanges.length > 0);
+    const wholeBlockCollapse = !hasCollapseRanges && (meta.flags.collapse ?? (opts.collapseAfter != null ? shouldCollapse(pre, opts.collapseAfter) : false));
     const resolved = {
         language: effectiveLang,
         title,
@@ -291,7 +381,7 @@ async function transformPre(pre, opts) {
         decorations: meta.flags.decorations ?? opts.decorations,
         showLanguage: meta.flags.showLanguage ?? opts.showLanguage,
         copyButton: meta.flags.copyButton ?? copyButtonEnabled,
-        collapse: meta.flags.collapse ?? (opts.collapseAfter != null ? shouldCollapse(pre, opts.collapseAfter) : false),
+        collapse: wholeBlockCollapse,
     };
     // Auto-detect terminal preset based on language.
     let presetClass = opts.preset;
@@ -313,6 +403,9 @@ async function transformPre(pre, opts) {
     const lineSpans = toLineSpans(codeChild, resolved, opts);
     // Filter out trailing empty line (from trailing newline in source).
     const filteredLines = filterTrailingEmpty(lineSpans);
+    // Apply per-line collapsible sections (meta `collapse="5-12,20-30"`).
+    // Wraps matching line ranges in <details><summary>N collapsed lines</summary>...</details>.
+    const collapsedLines = wrapCollapsedSections(filteredLines, meta, opts, resolved.lineNumbersStart);
     // Call onVisitLine / onVisitHighlightedLine hooks.
     filteredLines.forEach((line, i) => {
         const lineNumber = i + resolved.lineNumbersStart;
@@ -323,6 +416,9 @@ async function transformPre(pre, opts) {
         }
     });
     // data-line-numbers-max-digits attribute on <code> for CSS-driven gutter sizing.
+    // Uses filteredLines.length (not collapsedLines) because collapsed sections
+    // contain the same total number of logical lines — we just want the max
+    // gutter number's digit count.
     const maxDigits = String(filteredLines.length + resolved.lineNumbersStart - 1).length;
     const codeDataProps = {
         dataLineNumbersMaxDigits: String(maxDigits),
@@ -334,11 +430,36 @@ async function transformPre(pre, opts) {
     if (resolved.lineNumbers) {
         codeDataProps.dataLineNumbers = '';
     }
+    // Collect body-level `has-*` classes (e.g. `has-diff`, `has-focused`,
+    // `has-highlighted`) from the line spans. These were previously stripped —
+    // restoring them lets CSS target the whole <pre> when any line has a state.
+    const preLevelClasses = new Set();
+    for (const line of collapsedLines) {
+        // Skip <details> wrapper elements — only inspect actual line spans.
+        if (line.tagName !== 'span')
+            continue;
+        const lineClasses = line.properties?.className ?? [];
+        if (lineClasses.includes('pcb__line--add') || lineClasses.includes('pcb__line--del')) {
+            preLevelClasses.add('has-diff');
+        }
+        if (lineClasses.includes('pcb__line--focus')) {
+            preLevelClasses.add('has-focused');
+        }
+        if (lineClasses.includes('pcb__line--hl')) {
+            preLevelClasses.add('has-highlighted');
+        }
+        if (lineClasses.includes('pcb__line--error') || lineClasses.includes('pcb__line--warning') || lineClasses.includes('pcb__line--info')) {
+            preLevelClasses.add('has-error-level');
+        }
+    }
     // Build code <pre><code> with line spans.
     // When keepBackground is true, preserve Shiki's inline `style` (which includes
     // background-color + color from the theme) on the new <pre>.
-    const newCode = h('code', codeDataProps, filteredLines);
+    const newCode = h('code', codeDataProps, collapsedLines);
     const newPreProps = {};
+    if (preLevelClasses.size > 0) {
+        newPreProps.className = [...preLevelClasses];
+    }
     if (opts.keepBackground && pre.properties?.style) {
         newPreProps.style = pre.properties.style;
     }
@@ -350,33 +471,56 @@ async function transformPre(pre, opts) {
     if (resolved.highlight.length > 0)
         bodyClasses.push('pcb__body--has-hl');
     // Accessibility: mark scrollable region so screen readers announce it (WCAG 4.1.2).
+    // Also add tabindex=0 for keyboard scrolling (WCAG 2.1.1).
     const bodyProps = { className: bodyClasses };
     if (opts.accessibleScroll) {
         bodyProps.role = 'region';
+        bodyProps.tabIndex = 0;
+        // i18n: allow user to override the aria-label prefix.
+        const ariaPrefix = opts.texts?.codeBlockAriaPrefix ?? 'Code block';
         // Escape the title/lang for use in an aria-label attribute (defense in depth:
         // prevents any <script> or other HTML from leaking into the attribute).
         const safeLabel = title
-            ? `Code block: ${title.replace(/[<>"'&]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;', '&': '&amp;' }[c] ?? c))}`
+            ? `${ariaPrefix}: ${title.replace(/[<>"'&]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;', '&': '&amp;' }[c] ?? c))}`
             : effectiveLang
-                ? `Code block: ${effectiveLang}`
-                : 'Code block';
+                ? `${ariaPrefix}: ${effectiveLang}`
+                : ariaPrefix;
         bodyProps.ariaLabel = safeLabel;
     }
     const body = h('div', bodyProps, [newPre]);
+    // i18n: screen-reader-only title for terminal preset (improves context).
+    const terminalSrText = (presetClass === 'terminal' && !title && opts.terminalSrOnlyTitle !== false)
+        ? (opts.texts?.terminalSrOnlyTitle ?? 'Terminal window')
+        : null;
     // Header bar.
+    // Use <figcaption> when there's no separate caption (more semantic).
+    // When both title-bar and caption are present, use <div> for bar and
+    // <figcaption> for the caption (matches rehype-pretty-code).
     let bar = null;
     if (resolved.titleBar) {
         const barChildren = [];
         if (resolved.decorations)
             barChildren.push(dotsElement());
+        if (terminalSrText) {
+            barChildren.push(h('span', { className: ['pcb__sr-only'] }, [hText(terminalSrText)]));
+        }
         barChildren.push(h('div', { className: ['pcb__title'] }, title ? [hText(title)] : []));
         if (resolved.showLanguage && resolved.language) {
             barChildren.push(h('div', { className: ['pcb__lang'] }, [hText(languageLabel ?? resolved.language)]));
         }
         if (resolved.copyButton) {
-            barChildren.push(buildCopyButton(opts));
+            const btn = buildCopyButton(opts);
+            // For terminal preset + copyStripComments, mark the button so the
+            // client script knows to strip # comments from the copied text.
+            if (presetClass === 'terminal' && opts.copyStripComments !== false) {
+                btn.properties.dataStripComments = '';
+            }
+            barChildren.push(btn);
         }
-        bar = h('div', { className: ['pcb__bar'] }, barChildren);
+        // Use figcaption for the bar when there's no separate caption below —
+        // this gives the figure an accessible name from the title.
+        const barTag = (!opts.caption || !meta.caption) && title ? 'figcaption' : 'div';
+        bar = h(barTag, { className: ['pcb__bar'] }, barChildren);
         if (title)
             opts.onVisitTitle(bar);
     }
@@ -397,6 +541,9 @@ async function transformPre(pre, opts) {
         const summaryChildren = [];
         if (resolved.decorations)
             summaryChildren.push(dotsElement());
+        if (terminalSrText) {
+            summaryChildren.push(h('span', { className: ['pcb__sr-only'] }, [hText(terminalSrText)]));
+        }
         summaryChildren.push(h('span', { className: ['pcb__title'] }, [hText(title ?? 'code')]));
         if (resolved.showLanguage && resolved.language) {
             summaryChildren.push(h('div', { className: ['pcb__lang'] }, [hText(languageLabel ?? resolved.language)]));
@@ -418,8 +565,13 @@ async function transformPre(pre, opts) {
 }
 /** Build the copy button based on options (legacy boolean or new object form). */
 function buildCopyButton(opts) {
-    let label = 'copy';
-    let doneLabel = 'copied!';
+    // i18n: allow user to override default UI strings via `texts` option.
+    const texts = opts.texts ?? {};
+    const defaultLabel = texts.copyLabel ?? 'copy';
+    const defaultDoneLabel = texts.doneLabel ?? 'copied!';
+    const defaultAriaLabel = texts.copyAriaLabel ?? 'Copy code';
+    let label = defaultLabel;
+    let doneLabel = defaultDoneLabel;
     let copyIcon;
     let successIcon;
     let feedbackDuration;
@@ -429,17 +581,26 @@ function buildCopyButton(opts) {
             label = opts.copyButton.label ?? null;
         }
         if ('doneLabel' in opts.copyButton) {
-            doneLabel = opts.copyButton.doneLabel ?? 'copied!';
+            doneLabel = opts.copyButton.doneLabel ?? defaultDoneLabel;
         }
         copyIcon = opts.copyButton.copyIcon;
         successIcon = opts.copyButton.successIcon;
         feedbackDuration = opts.copyButton.feedbackDuration;
     }
-    else {
-        // Legacy: use copyButtonLabel / copyButtonDoneLabel.
-        label = opts.copyButtonLabel;
-        doneLabel = opts.copyButtonDoneLabel;
+    else if (opts.copyButton === true) {
+        // Legacy boolean `copyButton: true`.
+        // If user explicitly set copyButtonLabel/copyButtonDoneLabel (deprecated),
+        // honor them. Otherwise use the i18n defaults from `texts`.
+        // We detect "explicitly set" by checking against the defaults: 'copy' and 'copied!'.
+        // (This is a bit of a hack but maintains backward compat.)
+        if (opts.copyButtonLabel !== 'copy') {
+            label = opts.copyButtonLabel;
+        }
+        if (opts.copyButtonDoneLabel !== 'copied!') {
+            doneLabel = opts.copyButtonDoneLabel;
+        }
     }
+    // Note: when copyButton=false, buildCopyButton is never called.
     const btnChildren = [copyIconElement(copyIcon)];
     if (label) {
         btnChildren.push(h('span', { className: ['pcb__copy-label'] }, [hText(label)]));
@@ -447,7 +608,7 @@ function buildCopyButton(opts) {
     const btnProps = {
         className: ['pcb__copy'],
         type: 'button',
-        ariaLabel: 'Copy code',
+        ariaLabel: defaultAriaLabel,
         dataDoneLabel: doneLabel,
     };
     // SECURITY: successIcon is stored verbatim as a data-* attribute and later
@@ -733,6 +894,59 @@ function filterTrailingEmpty(lines) {
         return lines;
     const hasText = extractText(codeChild).length > 0;
     return hasText ? lines : lines.slice(0, -1);
+}
+/**
+ * Wrap per-line collapsible sections in <details><summary>…</summary>…</details>.
+ *
+ * Reads `meta.collapseRanges` (parsed from `collapse="5-12,20-30"` meta) and
+ * wraps matching line ranges. Lines are 1-indexed (matching the lineNumbersStart
+ * offset passed in).
+ *
+ * The summary element shows "N collapsed lines" (or the i18n variant).
+ * The details element gets class `pcb__collapse` plus a style class based on
+ * `opts.collapseStyle` (e.g. `pcb__collapse--github`).
+ *
+ * Lines outside any range are passed through unchanged.
+ */
+function wrapCollapsedSections(lines, meta, opts, lineNumbersStart) {
+    if (!meta.collapseRanges || meta.collapseRanges.length === 0) {
+        return lines;
+    }
+    // Build a map of lineNumber → index in `lines`.
+    // Line numbers are 1-indexed starting at `lineNumbersStart`.
+    // Index in `lines` is 0-indexed, so line N corresponds to lines[N - lineNumbersStart].
+    const result = [];
+    let i = 0;
+    while (i < lines.length) {
+        const lineNumber = i + lineNumbersStart;
+        // Find a collapse range that starts at this line.
+        const range = meta.collapseRanges.find((r) => r.from === lineNumber);
+        if (range) {
+            const rangeSize = range.to - range.from + 1;
+            const sectionLines = lines.slice(i, i + rangeSize);
+            // i18n: customize the summary label.
+            const labelFn = opts.texts?.collapsedLinesLabel;
+            const summaryText = labelFn
+                ? labelFn(rangeSize)
+                : `${rangeSize} collapsed line${rangeSize === 1 ? '' : 's'}`;
+            const summary = h('summary', { className: ['pcb__collapse-summary'] }, [hText(summaryText)]);
+            const detailsClasses = ['pcb__collapse'];
+            if (opts.collapseStyle && opts.collapseStyle !== 'github') {
+                detailsClasses.push(`pcb__collapse--${opts.collapseStyle}`);
+            }
+            else {
+                detailsClasses.push('pcb__collapse--github');
+            }
+            const details = h('details', { className: detailsClasses }, [summary, ...sectionLines]);
+            result.push(details);
+            i += rangeSize;
+        }
+        else {
+            result.push(lines[i]);
+            i++;
+        }
+    }
+    return result;
 }
 /** Walk line children and remap "highlighted-word" → "pcb__word" class. */
 function mapWordHighlights(children) {

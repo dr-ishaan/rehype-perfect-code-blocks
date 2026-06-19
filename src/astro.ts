@@ -52,6 +52,13 @@ function loadCss(): string {
   }
 }
 
+/** Escape a string for use as an HTML attribute value (defense in depth). */
+function escapeAttr(s: string): string {
+  return s.replace(/[<>"'&]/g, (c) => ({
+    '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;', '&': '&amp;',
+  }[c] ?? c));
+}
+
 /** Recursively walk a directory and return all .html file paths. */
 function findHtmlFiles(dir: string): string[] {
   const results: string[] = [];
@@ -109,22 +116,25 @@ export default function perfectCode(
         //    (The previous `injectScript('page', '<style>...')` approach
         //    breaks on Astro 6 where injectScript expects JS, not HTML.)
         const injections: string[] = [];
+        // CSP nonce: if set, add `nonce="..."` to all <script> and <style> tags
+        // so they pass a strict Content-Security-Policy.
+        const nonceAttr = options.cspNonce ? ` nonce="${escapeAttr(options.cspNonce)}"` : '';
 
         // CSS
         if (options.injectStyles !== false) {
           const css = loadCss();
           if (css) {
-            injections.push(`<style data-pcb>${css}</style>`);
+            injections.push(`<style data-pcb${nonceAttr}>${css}</style>`);
           }
         }
 
         // Copy-button script
         if (options.copyButton !== false) {
-          injections.push(`<script>${COPY_SCRIPT}</script>`);
+          injections.push(`<script${nonceAttr}>${COPY_SCRIPT}</script>`);
           // Graceful degradation: .no-js class
           if (options.hideCopyWithoutJs !== false) {
             injections.push(
-              `<script>document.documentElement.classList.add('no-js');</script>`
+              `<script${nonceAttr}>document.documentElement.classList.add('no-js');</script>`
             );
           }
         }
@@ -136,7 +146,7 @@ export default function perfectCode(
             : 'auto';
           if (safeTheme !== 'auto') {
             injections.push(
-              `<script>document.documentElement.setAttribute('data-theme','${safeTheme}');</script>`
+              `<script${nonceAttr}>document.documentElement.setAttribute('data-theme','${safeTheme}');</script>`
             );
           }
         }
