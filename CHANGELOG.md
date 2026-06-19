@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.1] — 2026-06-19
+
+### Summary
+
+Documentation-only release. Updates `README.md` to cover all v1.3.0 features (5 architectural patterns), the new advanced APIs (`runHighlighterTask`, `disposeHighlighter`, `wordDiff`, `hasChanges`, `DiffToken`), the new `wordDiff` option, theme-aware color defaults, the updated architecture diagram, the expanded test suite (1092 tests across 14 suites), the updated comparison table, and the corrected file structure. No code changes; no behavior changes.
+
+### Documentation
+
+- **README.md** — comprehensive update for v1.3.0:
+  - New "What's new in v1.3.0" section with a table of the 5 adopted patterns (source, new export/option).
+  - New "Advanced APIs (v1.3.0+)" section documenting `runHighlighterTask`, `disposeHighlighter`, `wordDiff`, `hasChanges`, and the `DiffToken` type, with usage examples.
+  - New "Theme-aware defaults (v1.3.0+)" subsection in Theming, documenting the 7 auto-derived `--pcb-*` variables and the cascade order.
+  - New `wordDiff` row in the Modes options table, with a full usage example showing the input markdown and resulting HTML.
+  - Updated Architecture diagram and design-decisions list (10 items, up from 6) to mention the task queue, theme-aware defaults, dispose lifecycle, and SPA-robust copy button.
+  - Updated Testing section: 1092 tests across 14 suites (was "110 tests across three suites").
+  - Updated Comparison table: 4 new rows for word-level diff, theme-aware defaults, highlighter task queue, dispose lifecycle, and SPA-robust copy button.
+  - Updated File structure: new `color-utils.ts`, `word-diff.ts` source files; new `test-issue-11.mjs`, `test-issue-12.mjs`, `test-architecture-patterns.mjs` test files; updated descriptions for `shiki.ts`, `transformer.ts`, `copy-script.ts`, `index.ts`.
+  - New "Changelog" section in README with highlights for each version.
+  - Updated "Why this exists" bullet list to mention the new v1.3.0 features.
+  - Updated test count from "110 tests pass" to "1092 tests pass".
+
 ## [1.3.0] — 2026-06-19
 
 ### Summary
