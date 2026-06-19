@@ -314,7 +314,13 @@ export async function runShikiOnRawBlocks(tree, opts) {
         themeKeys = ['github-dark'];
     }
     // Collect all langs needed for these blocks
-    const langSet = new Set(opts.shiki.langs ?? []);
+    // NOTE: language identifiers are normalized to lowercase here so that
+    // case-insensitive fence spellings (```JS, ```TypeScript, ```Python)
+    // resolve to the same Shiki grammar as their canonical lowercase forms
+    // (javascript, typescript, python). This matches Shiki's own case-
+    // insensitive behavior in codeToHast/codeToHtml, and matches what every
+    // other CommonMark renderer accepts. See issue #12.
+    const langSet = new Set((opts.shiki.langs ?? []).map((l) => l.toLowerCase()));
     for (const pre of targets) {
         const code = pre.children.find((c) => c.type === 'element' && c.tagName === 'code');
         if (!code)
@@ -323,7 +329,7 @@ export async function runShikiOnRawBlocks(tree, opts) {
         for (const c of cls) {
             const m = c.match(/^language-(.+)$/);
             if (m)
-                langSet.add(m[1]);
+                langSet.add(m[1].toLowerCase());
         }
     }
     langSet.add('plaintext');
@@ -357,7 +363,15 @@ export async function runShikiOnRawBlocks(tree, opts) {
         }
     }
     // Apply language aliases (e.g., { ts: 'typescript' }).
-    const langAlias = opts.languageAliases ?? {};
+    // Build a lowercase-keyed lookup so user config like { TS: 'typescript' }
+    // or { ts: 'typescript' } both work regardless of the case used in the
+    // fence or in the config. The alias target is preserved as-is (typically
+    // already lowercase). See issue #12.
+    const rawLangAlias = opts.languageAliases ?? {};
+    const langAlias = {};
+    for (const [k, v] of Object.entries(rawLangAlias)) {
+        langAlias[k.toLowerCase()] = v;
+    }
     // Resolve the logger once.
     const logger = opts.logger ?? console;
     // Track which langs we've already warned about (avoid duplicate warnings).
@@ -374,7 +388,18 @@ export async function runShikiOnRawBlocks(tree, opts) {
         }
         const langClass = code.properties?.className?.[0] ?? '';
         const rawLang = (langClass.match(/^language-(.+)$/) ?? [])[1] ?? 'plaintext';
-        const lang = langAlias[rawLang] ?? rawLang;
+        // Normalize to lowercase before any Shiki call. Shiki's bundled grammars
+        // all use lowercase IDs (javascript, typescript, ...), and its codeToHast
+        // is case-insensitive — but the lazy-loader path (loadLanguage) is not,
+        // which previously caused `JS`/`TypeScript`/`Python` to throw "Language
+        // is not included in this bundle". Lowercasing here fixes that and
+        // matches what every other CommonMark renderer does.
+        // See issue #12.
+        const normalizedRawLang = rawLang.toLowerCase();
+        // Apply user-defined languageAliases (e.g. { ts: 'typescript' }). Looked
+        // up by lowercase key so users can write either `ts` or `TS` in their
+        // config. The alias target is used as-is (typically already lowercase).
+        const lang = langAlias[normalizedRawLang] ?? normalizedRawLang;
         const metaStr = code.properties?.dataMeta ??
             pre.properties?.dataMeta ??
             '';
@@ -492,12 +517,26 @@ export async function runShikiOnRawBlocks(tree, opts) {
                     newCode.properties.dataMeta = metaStr;
                 }
                 // Re-attach language-X class so the transformer can detect the language.
+                // Use the lowercase normalized form so downstream matching (which is
+                // case-sensitive in our transformer.ts:extractLanguageFromClass) is
+                // consistent with the lowercase lang we passed to Shiki. The original
+                // mixed-case class is also added (if different) so user CSS targeting
+                // like `.language-JS` continues to work. See issue #12.
                 const existingClasses = newCode.properties.className ?? [];
-                const langClass2 = `language-${rawLang}`;
-                if (!existingClasses.includes(langClass2)) {
-                    newCode.properties.className = [...existingClasses, langClass2];
+                const langClassLower = `language-${normalizedRawLang}`;
+                const langClassOriginal = `language-${rawLang}`;
+                const additions = [];
+                if (!existingClasses.includes(langClassLower))
+                    additions.push(langClassLower);
+                if (rawLang !== normalizedRawLang && !existingClasses.includes(langClassOriginal) && !additions.includes(langClassOriginal)) {
+                    additions.push(langClassOriginal);
                 }
-                newCode.properties.dataLanguage = rawLang;
+                if (additions.length > 0) {
+                    newCode.properties.className = [...existingClasses, ...additions];
+                }
+                // dataLanguage uses the lowercase form for consistency with the
+                // language-* class and the Shiki lang we actually used.
+                newCode.properties.dataLanguage = normalizedRawLang;
             }
             Object.assign(pre, newPre);
         }
