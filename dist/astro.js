@@ -120,11 +120,18 @@ export default function perfectCode(options = {}) {
                 }
                 // Copy-button script
                 if (options.copyButton !== false) {
-                    injections.push(`<script${nonceAttr}>${COPY_SCRIPT}</script>`);
-                    // Graceful degradation: .no-js class
+                    // Graceful degradation: .no-js class MUST be added BEFORE the copy
+                    // script runs, so the copy script's swapNoJs() can detect and remove
+                    // it. If we add .no-js AFTER the copy script, swapNoJs() is a no-op
+                    // (the class isn't there yet), and the MutationObserver (which only
+                    // watches childList by default) won't catch the attribute change —
+                    // leaving .no-js on <html> permanently and hiding the copy button
+                    // via the `html.no-js .pcb__copy { display: none !important; }` rule.
+                    // See issue: copy button not working in Astro build output.
                     if (options.hideCopyWithoutJs !== false) {
                         injections.push(`<script${nonceAttr}>document.documentElement.classList.add('no-js');</script>`);
                     }
+                    injections.push(`<script${nonceAttr}>${COPY_SCRIPT}</script>`);
                 }
                 // Manual theme override
                 if (options.theme && options.theme !== 'auto') {
