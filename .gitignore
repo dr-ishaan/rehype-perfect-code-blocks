@@ -18,3 +18,4 @@ test-output/
 # Lockfiles for other package managers
 yarn.lock
 pnpm-lock.yaml
+*.tgz

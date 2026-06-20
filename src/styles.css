@@ -6,6 +6,8 @@
    - Solid gutter background hides code scrolling behind it
    - All defaults use :where() for zero specificity so user CSS wins
    - Every visual property is a --pcb-* CSS variable
+   - Framework-reset overrides (Tailwind/daisyUI compat) use real
+     specificity so they beat bare-element resets like `pre { ... }`
    ============================================================ */
 
 :where(.pcb) {
@@ -249,6 +251,69 @@
   color: inherit;
   background: none;
   display: block;
+}
+
+/* ============================================================
+   Framework-reset overrides (Tailwind Preflight / daisyUI compat)
+   ------------------------------------------------------------
+   Tailwind Preflight targets bare `pre`, `code`, and `button`
+   elements with specificity (0,0,1). Our :where() rules above
+   have zero specificity (0,0,0), so Tailwind's resets WIN and
+   break the plugin's overflow model, font inheritance, and
+   copy-button styling.
+
+   These rules use REAL specificity (.pcb pre = (0,1,1),
+   .pcb__copy = (0,1,0)) to beat framework base resets WITHOUT
+   !important. They only set the properties that frameworks
+   clobber — everything else stays in :where() so user CSS
+   still wins.
+
+   If you're NOT using a CSS framework, these rules are harmless
+   (they set the same values as the :where() rules above).
+   ============================================================ */
+
+/* Tailwind sets `pre { overflow-x: auto }` which creates a double-
+   scrollbar (one on <pre>, one on .pcb__body). Force <pre> to
+   visible so only .pcb__body scrolls. */
+.pcb pre {
+  overflow: visible;
+}
+
+/* Tailwind sets `pre, code { font-family: ui-monospace, ... }` which
+   overrides the plugin's `font: inherit` and ignores --pcb-font-mono.
+   Re-assert the plugin's font. */
+.pcb pre,
+.pcb code {
+  font-family: var(--pcb-font-mono);
+}
+
+/* Tailwind sets `button { background: transparent; background-image: none }`
+   which strips the copy button's hover background. Re-assert the plugin's
+   button base. (.pcb__copy already has specificity (0,1,0) which beats
+   Tailwind's `button` (0,0,1), but we re-assert here for clarity and to
+   catch cases where frameworks add higher-specificity button resets.) */
+.pcb__copy {
+  appearance: none;
+  background: transparent;
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+
+/* Tailwind sets `*, ::before, ::after { border-width: 0 }` which nukes
+   borders on the header bar and copy button. Re-assert. */
+.pcb__bar {
+  border-bottom: 1px solid var(--pcb-border);
+}
+
+/* Tailwind's box-sizing: border-box is fine (the plugin expects it).
+   No override needed. */
+
+/* Some Tailwind utilities (e.g., `@apply break-words` or global
+   `pre { white-space: pre-wrap }`) can clobber the plugin's
+   `white-space: pre` on .pcb__code, causing long lines to wrap
+   instead of scroll. Re-assert with real specificity. */
+.pcb__code {
+  white-space: pre;
 }
 
 /* ---------- Row-based line grid ----------
