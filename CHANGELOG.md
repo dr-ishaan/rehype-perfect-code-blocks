@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.2] — 2026-06-20
+
+### Summary
+
+Patch release fixing a bug where the copy button was unclickable in Astro build output. The root cause was a script injection order race condition: the `.no-js` class (which hides the copy button via CSS when JS is disabled) was added AFTER the copy script ran, so the copy script's `swapNoJs()` was a no-op and the MutationObserver didn't catch the attribute change. Result: `.no-js` stayed on `<html>` permanently, `html.no-js .pcb__copy { display: none !important; }` hid the button, and clicks never reached it.
+
+### Bug fixes
+
+- **Copy button unclickable in Astro build output** — Three complementary fixes:
+  1. **Reversed script injection order** in `src/astro.ts`: the `.no-js` add script is now injected BEFORE the copy script, so the copy script's `swapNoJs()` correctly detects and removes the `.no-js` class at load time.
+  2. **MutationObserver now watches attribute changes**: the observer on `documentElement` was previously configured with `{ childList: true, subtree: true }` only — it caught new DOM nodes but NOT class attribute changes on `<html>`. Now configured with `{ childList: true, subtree: true, attributes: true, attributeFilter: ['class'] }` so it catches `.no-js` being added by any later script.
+  3. **Defensive `DOMContentLoaded` + `window.load` re-check**: the copy script now re-runs `swapNoJs()` on both events as belt-and-suspenders. If a framework adds `.no-js` in a way the MutationObserver doesn't catch (e.g., before the observer is set up, or in a different document context), these event handlers will catch it.
+
+### Verification
+
+- All 1092 pre-existing tests pass (no regressions).
+- New `test-copy-button-fix.mjs` adds 22 regression tests covering: injection order in built output, MutationObserver configuration (attributes + class filter), defensive event handlers, `swapNoJs()` function behavior, functional simulation of both the fixed order and the old buggy order + defensive fix, and the CSS rule.
+- Total: 1114/1114 tests passing.
+
 ## [1.3.1] — 2026-06-19
 
 ### Summary

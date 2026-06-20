@@ -144,11 +144,14 @@ export const COPY_SCRIPT = `
     }
   });
 
-  // Pattern 4: MutationObserver for SPA support.
-  // When new code blocks are inserted into the DOM (e.g. by React/Vue
-  // re-render, Astro view transitions, or Turbolinks navigation), the
-  // .no-js → .js class swap may need to be re-applied so newly-added
-  // copy buttons become visible. The observer watches for added .pcb nodes.
+  // Pattern 4: MutationObserver for SPA support + .no-js race fix.
+  // Watches for:
+  //   - New code blocks added to the DOM (React/Vue re-render, Astro view
+  //     transitions, Turbolinks) → re-apply .no-js → .js swap + ensure
+  //     aria-live region.
+  //   - Attribute changes on <html> (specifically the class attribute) →
+  //     catches the case where a later script adds .no-js AFTER this script
+  //     ran (a race condition that previously left copy buttons hidden).
   if (typeof MutationObserver !== 'undefined') {
     var pendingObserve = false;
     var observer = new MutationObserver(function (mutations) {
@@ -157,20 +160,50 @@ export const COPY_SCRIPT = `
       pendingObserve = true;
       Promise.resolve().then(function () {
         pendingObserve = false;
-        // If any new .pcb nodes were added, ensure the .js class is set
-        // (in case the page was rendered server-side with .no-js and the
-        // client took over after initial load).
+        var needsSwap = false;
         for (var i = 0; i < mutations.length; i++) {
-          if (mutations[i].addedNodes && mutations[i].addedNodes.length) {
-            swapNoJs();
-            ensureLiveRegion();
-            break;
+          var m = mutations[i];
+          // childList: new nodes added (SPA navigation, view transitions)
+          if (m.type === 'childList' && m.addedNodes && m.addedNodes.length) {
+            needsSwap = true;
           }
+          // attributes: class changed on <html> (the .no-js race fix)
+          if (m.type === 'attributes' && m.attributeName === 'class') {
+            needsSwap = true;
+          }
+        }
+        if (needsSwap) {
+          swapNoJs();
+          ensureLiveRegion();
         }
       });
     });
-    // Observe the whole document subtree for added nodes.
-    observer.observe(document.documentElement, { childList: true, subtree: true });
+    // Observe documentElement for BOTH childList (new nodes) AND attribute
+    // changes (class attribute — catches .no-js being added by a later script).
+    observer.observe(document.documentElement, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['class'],
+    });
+  }
+
+  // Defensive: re-run swapNoJs() on DOMContentLoaded and window.load.
+  // Belt + suspenders for the .no-js race — if a framework (Astro, Next.js,
+  // etc.) adds .no-js in a way the MutationObserver doesn't catch (e.g.,
+  // before the observer is set up, or in a different document context),
+  // these event handlers will catch it.
+  if (typeof document.addEventListener === 'function') {
+    document.addEventListener('DOMContentLoaded', function () {
+      swapNoJs();
+      ensureLiveRegion();
+    });
+  }
+  if (typeof window.addEventListener === 'function') {
+    window.addEventListener('load', function () {
+      swapNoJs();
+      ensureLiveRegion();
+    });
   }
 
   // Pattern 4: astro:page-load event listener for Astro view transitions.
