@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.3] — 2026-06-20
+
+### Summary
+
+Patch release fixing CSS conflicts between the plugin and Tailwind CSS Preflight (and similar framework base resets). The plugin's `:where()` zero-specificity design — normally a feature — meant Tailwind's bare-element resets (`pre { overflow-x: auto }`, `code { font-family: ui-monospace }`, `button { background: transparent }`, `* { border-width: 0 }`) overrode the plugin's critical rules. This caused double scrollbars, wrong mono font, stripped copy-button styling, and long lines wrapping instead of scrolling. The fix adds a small block of "framework-reset overrides" with real specificity that beat framework base resets without `!important`.
+
+### Bug fixes
+
+- **Tailwind Preflight / daisyUI CSS conflict** — Added a block of "framework-reset overrides" in `src/styles.css` with REAL specificity (`.pcb pre` = (0,1,1), `.pcb__copy` = (0,1,0), `.pcb__bar` = (0,1,0), `.pcb__code` = (0,1,0)) that beat framework base resets targeting bare `pre`/`code`/`button`/`*` elements (specificity (0,0,1) or (0,0,0)). The overrides cover:
+  - `.pcb pre { overflow: visible }` — prevents Tailwind's `pre { overflow-x: auto }` from creating a double scrollbar (one on `<pre>`, one on `.pcb__body`).
+  - `.pcb pre, .pcb code { font-family: var(--pcb-font-mono) }` — prevents Tailwind's `pre, code { font-family: ui-monospace }` from overriding the plugin's `--pcb-font-mono`.
+  - `.pcb__copy { appearance: none; background: transparent; border: 1px solid transparent; cursor: pointer }` — prevents Tailwind's `button { background: transparent; background-image: none }` from stripping the copy button's base styling.
+  - `.pcb__bar { border-bottom: 1px solid var(--pcb-border) }` — prevents Tailwind's `* { border-width: 0 }` from nuking the header bar's bottom border.
+  - `.pcb__code { white-space: pre }` — prevents Tailwind utilities like `break-words` or global `pre { white-space: pre-wrap }` from wrapping long lines instead of scrolling.
+
+  The `:where()` zero-specificity rules are preserved for all other styling — user CSS still wins without `!important` arms races. The new overrides only set the properties that frameworks clobber; everything else stays in `:where()`. No `!important` is used in the override block — the specificity is high enough to beat framework resets on its own.
+
+### Verification
+
+- All 1114 pre-existing tests pass (no regressions).
+- New `test-tailwind-compat.mjs` adds 20 regression tests covering: `:where()` rules preserved, framework-reset overrides exist with real specificity, overrides come after `:where()` rules (so they win on tie), no `!important` in override declarations, specificity verification (`.pcb pre` beats `pre`, `.pcb__copy` beats `button`, etc.), and documentation comments.
+- Total: 1134/1134 tests passing.
+
 ## [1.3.2] — 2026-06-20
 
 ### Summary
