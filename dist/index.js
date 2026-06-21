@@ -158,6 +158,10 @@ function resolveDefaults(opts) {
         // v2.1.0: P1 features
         math: opts.math ?? undefined,
         devWarnings: opts.devWarnings ?? (process.env.NODE_ENV !== 'production'),
+        // v2.2.0: Phase 3
+        diffMode: opts.diffMode ?? 'unified',
+        annotations: opts.annotations ?? false,
+        attribution: opts.attribution ?? false,
         inline: opts.inline ?? false,
     };
 }

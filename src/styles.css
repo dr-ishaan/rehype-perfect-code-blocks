@@ -654,3 +654,71 @@
 html.no-js .pcb__copy {
   display: none !important;
 }
+
+/* ============================================================
+   v2.2.0: Phase 3 — Split diff, annotations, attribution
+   ============================================================ */
+
+/* ---------- Split diff view ---------- */
+:where(.pcb--split-diff) .pcb__body {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+:where(.pcb--split-diff) .pcb__body > pre {
+  border-right: 1px solid var(--pcb-border);
+}
+:where(.pcb--split-diff) .pcb__body > pre:last-child) {
+  border-right: none;
+}
+@media (max-width: 768px) {
+  :where(.pcb--split-diff) .pcb__body {
+    grid-template-columns: 1fr;
+  }
+  :where(.pcb--split-diff) .pcb__body > pre {
+    border-right: none;
+    border-bottom: 1px solid var(--pcb-border);
+  }
+}
+
+/* ---------- Line annotations ---------- */
+:where(.pcb__ann) {
+  display: none; /* hidden by default, shown when .pcb--annotations */
+}
+:where(.pcb--annotations) .pcb__line[data-ann] {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: baseline;
+}
+:where(.pcb--annotations) .pcb__ann) {
+  display: block;
+  padding-left: 1rem;
+  color: var(--pcb-text-muted);
+  font-size: 0.8125em;
+  font-style: italic;
+  white-space: normal;
+  border-left: 2px solid var(--pcb-border);
+  user-select: none;
+}
+@media (max-width: 768px) {
+  :where(.pcb--annotations) .pcb__line[data-ann]) {
+    grid-template-columns: auto 1fr;
+  }
+  :where(.pcb--annotations) .pcb__ann) {
+    grid-column: 1 / -1;
+    padding-left: 0;
+    border-left: none;
+    border-top: 1px dashed var(--pcb-border);
+    margin-top: 0.25rem;
+  }
+}
+
+/* ---------- Attribution footer ---------- */
+:where(.pcb__attribution) {
+  padding: 0.5rem 1rem;
+  font-family: var(--pcb-bar-font);
+  font-size: var(--pcb-bar-font-size);
+  color: var(--pcb-caption-color);
+  background: var(--pcb-caption-bg);
+  border-top: 1px solid var(--pcb-border);
+  font-style: italic;
+}

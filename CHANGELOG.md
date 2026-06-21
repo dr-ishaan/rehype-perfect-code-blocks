@@ -5,6 +5,82 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0] — 2026-06-20
+
+### Summary
+
+Minor release implementing Phase 3: Side-by-side diff view, Line annotations, and Code attribution. These features turn the plugin from "pretty syntax highlighting" into "a complete technical content toolkit" — ideal for educational, academic, and historical content. No breaking changes — all new features are opt-in.
+
+### Features
+
+#### Side-by-side diff view (`diffMode: 'split'`)
+
+New `diffMode` option — renders adjacent `+`/`-` diff line pairs in a two-column layout (Before | After) instead of the default unified view:
+
+```js
+perfectCode({ diffMode: 'split' })
+```
+
+- Two-column grid layout with synchronized scrolling
+- Mobile responsive: columns stack vertically below 768px
+- Works with `wordDiff: true` (word-level diff within each column)
+- CSS class `pcb--split-diff` added to the `<figure>` for custom styling
+
+#### Line annotations (`annotations: true`)
+
+New `annotations` option — margin notes attached to specific code lines via `// [!ann: "text"]` notation:
+
+````markdown
+```ts
+const attention = Q.dot(K.T) / Math.sqrt(d)  // [!ann: "Scaled dot-product"]
+const weights = softmax(attention)            // [!ann: "Normalized weights"]
+```
+````
+
+- Annotation text appears in a `pcb__ann` span on the right side of the annotated line
+- The `// [!ann: "text"]` notation is stripped from the displayed code
+- `data-ann` attribute on the line span for programmatic access
+- CSS class `pcb--annotations` on the `<figure>` for enabling the annotation grid layout
+- Mobile responsive: annotations stack below the code line on narrow screens
+
+#### Code attribution (`attribution: true`)
+
+New `attribution` option — parses `author`, `year`, and `source` from the fence meta string and renders them as a footer below the code block:
+
+````markdown
+```ts title="perceptron.ts" author="Rosenblatt" year="1958" source="Principles of Neurodynamics"
+const output = stepFunction(inputs.dot(weights))
+```
+````
+
+Renders as:
+```
+┌─ perceptron.ts ──────────────────┐
+│ const output = stepFunction(...)  │
+└───────────────────────────────────┘
+  Rosenblatt (1958). Principles of Neurodynamics.
+```
+
+- Footer rendered as `<figcaption class="pcb__attribution">` with italic styling
+- Works with partial attribution (only `author`, or `author` + `year`, etc.)
+- Meta parser extended to extract `author="..."`, `year="..."`, `source="..."` from the fence meta string
+- When `attribution` is disabled (default), these meta fields are silently ignored
+
+### CSS additions
+
+New CSS rules in `dist/styles.css`:
+- `.pcb--split-diff` — grid layout for two-column diff view
+- `.pcb__ann` / `.pcb--annotations` — annotation display (hidden by default, shown when enabled)
+- `.pcb__attribution` — attribution footer styling
+- All new rules use `:where()` for zero specificity (user CSS wins)
+- Mobile responsive rules for split diff and annotations
+
+### Verification
+
+- All 1219 pre-existing tests pass (no regressions).
+- New `test-v2-phase3.mjs` adds 35 regression tests covering all 3 features.
+- Total: 1254/1254 tests passing.
+
 ## [2.1.0] — 2026-06-20
 
 ### Summary

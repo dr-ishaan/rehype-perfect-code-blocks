@@ -249,6 +249,10 @@ export function rehypePerfectCodeBlocks(userOptions: PerfectCodeOptions = {}) {
     scope: undefined as unknown as string,
     math: undefined as unknown as NonNullable<PerfectCodeOptions['math']>,
     devWarnings: process.env.NODE_ENV !== 'production',
+    // v2.2.0: Phase 3
+    diffMode: 'unified' as const,
+    annotations: false,
+    attribution: false,
     inline: false,
     ...rest,
   };
@@ -639,6 +643,31 @@ async function transformPre(
     figureChildren.push(cap);
   }
 
+  // v2.2.0: Attribution footer — render author/year/source as a footer below the code block.
+  if ((opts as { attribution?: boolean }).attribution && (meta.author || meta.year || meta.source)) {
+    const parts: string[] = [];
+    if (meta.author) parts.push(meta.author);
+    if (meta.year) parts.push(`(${meta.year})`);
+    if (meta.source) parts.push(`. ${meta.source}.`);
+    else if (meta.author || meta.year) parts.push('.');
+    const attrText = parts.join(' ').trim();
+    if (attrText) {
+      figureChildren.push(
+        h('figcaption', { className: ['pcb__attribution'] }, [hText(attrText)])
+      );
+    }
+  }
+
+  // v2.2.0: Add pcb--split-diff class when diffMode is 'split'
+  if ((opts as { diffMode?: string }).diffMode === 'split') {
+    figClasses.push('pcb--split-diff');
+  }
+
+  // v2.2.0: Add pcb--annotations class when annotations are enabled
+  if ((opts as { annotations?: boolean }).annotations) {
+    figClasses.push('pcb--annotations');
+  }
+
   return h('figure', { className: figClasses }, figureChildren);
 }
 
@@ -941,6 +970,19 @@ function toLineSpans(
     // Map word-highlight spans inside this line.
     const mappedChildren = mapWordHighlights(line.children);
 
+    // v2.2.0: Parse and strip // [!ann: "text"] annotation notation.
+    let annotationText: string | null = null;
+    if ((opts as { annotations?: boolean }).annotations) {
+      const lineText = extractLineText(line);
+      const annMatch = lineText.match(/\[!ann:\s*"([^"]*)"\s*\]/);
+      if (annMatch) {
+        annotationText = annMatch[1];
+        // Strip the annotation from the line's text content
+        // (replace in all text nodes within the line)
+        stripAnnotationFromLine(line, annMatch[0]);
+      }
+    }
+
     // The line wrapper itself (the Shiki <span class="line ...">) becomes the
     // content of .pcb__code. Strip its classes — we've already mapped them
     // onto the outer .pcb__line wrapper, so they shouldn't also appear here.
@@ -953,7 +995,7 @@ function toLineSpans(
       children: mappedChildren,
     };
 
-    // Build the row: [gutter-cell?, code-cell]
+    // Build the row: [gutter-cell?, code-cell, annotation?]
     const lineChildren: ElementContent[] = [];
     if (resolved.lineNumbers) {
       lineChildren.push(
@@ -964,7 +1006,18 @@ function toLineSpans(
       h('span', { className: ['pcb__code'] }, [innerWrapper])
     );
 
-    return h('span', { className: [...classes] }, lineChildren);
+    // v2.2.0: Add annotation cell if this line has an annotation
+    if (annotationText !== null) {
+      lineChildren.push(
+        h('span', { className: ['pcb__ann'], 'dataAnn': annotationText }, [hText(annotationText)])
+      );
+    }
+
+    const lineProps: Record<string, unknown> = { className: [...classes] };
+    if (annotationText !== null) {
+      lineProps['dataAnn'] = annotationText;
+    }
+    return h('span', lineProps, lineChildren);
   });
 }
 
@@ -1151,6 +1204,18 @@ function h(tag: string, props: Record<string, unknown> = {}, children: ElementCo
 
 function hText(value: string): Text {
   return { type: 'text', value };
+}
+
+/** v2.2.0: Strip an annotation notation from all text nodes in a line element. */
+function stripAnnotationFromLine(line: Element, annotation: string): void {
+  const walk = (node: ElementContent): void => {
+    if (node.type === 'text') {
+      node.value = node.value.replace(annotation, '');
+    } else if (node.type === 'element') {
+      for (const child of node.children) walk(child);
+    }
+  };
+  for (const child of line.children) walk(child);
 }
 
 /* ---------- Pattern 5: word-level diff (selective adoption from expressive-code) ---------- */
