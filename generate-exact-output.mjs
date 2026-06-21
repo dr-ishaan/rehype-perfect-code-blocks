@@ -158,7 +158,7 @@ const rendered = String(
 );
 
 const html = `<!doctype html>
-<html lang="en" data-theme="dark">
+<html lang="en" data-theme="light">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
@@ -172,17 +172,17 @@ ${CSS}
 /* Page chrome (NOT part of the plugin) */
 body {
   margin: 0;
-  background: #010409;
-  color: #c9d1d9;
+  background: #ffffff;
+  color: #1f2328;
   font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
   padding: 2rem 1.5rem 6rem;
   line-height: 1.6;
 }
 .wrap { max-width: 880px; margin: 0 auto; }
-h1, h2 { color: #e6edf3; }
+h1, h2 { color: #1f2328; }
 h1 { font-size: 1.6rem; margin: 0 0 0.5rem; }
-h2 { font-size: 1.1rem; margin: 2.5rem 0 0.5rem; color: #79c0ff; }
-.lede { color: #8b949e; font-size: 0.95rem; margin: 0 0 2rem; }
+h2 { font-size: 1.1rem; margin: 2.5rem 0 0.5rem; color: #0969da; }
+.lede { color: #636c76; font-size: 0.95rem; margin: 0 0 2rem; }
 </style>
 </head>
 <body>
