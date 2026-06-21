@@ -5,6 +5,95 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] — 2026-06-20
+
+### Summary
+
+**Major release** implementing the four P0 CSS architecture items from the v2.0.0 roadmap. These are the foundational cascade-control features that every production site needs to adopt the plugin without fighting the CSS cascade. No breaking changes — all new features are opt-in with backward-compatible defaults.
+
+### Features
+
+#### P0-1: `@layer` CSS injection support
+
+New `cssInjection` and `cssLayer` options:
+
+- `cssInjection: 'inline'` (default, backward-compatible) — injects CSS in a `<style>` tag as before
+- `cssInjection: 'layer'` — wraps CSS in `@layer <cssLayer> { ... }` so it sits in the correct cascade layer on sites using `@layer` (Tailwind v3+, daisyUI, etc.)
+- `cssInjection: 'import'` — does NOT inject CSS; user imports manually via `import '@dr-ishaan/rehype-perfect-code-blocks/styles.css'`
+- `cssLayer: 'pcb'` (default) — the layer name to use when `cssInjection: 'layer'`
+
+Example:
+```js
+perfectCode({
+  cssInjection: 'layer',
+  cssLayer: 'components',
+})
+// User's CSS: @layer base, components, utilities;
+```
+
+#### P0-2: Design-token bridge
+
+New `tokens` option — provide 5 core values and the plugin auto-derives 20+ `--pcb-*` variables using `color-mix(in oklch, ...)`:
+
+```js
+perfectCode({
+  tokens: {
+    bg: 'var(--bg-subtle)',
+    fg: 'var(--ink)',
+    border: 'var(--rule)',
+    radius: 'var(--radius-card)',
+    monoFont: 'var(--font-mono)',
+  },
+})
+```
+
+The plugin generates `--pcb-ln-fg`, `--pcb-bg-header`, `--pcb-line-highlight`, `--pcb-line-add`, `--pcb-line-del`, `--pcb-line-focus`, `--pcb-copy-hover-bg`, `--pcb-word-bg`, and more — all derived from the 5 core tokens. Applied via `:where(.pcb)` (zero specificity) so user CSS still wins.
+
+Uses `color-mix(in oklch, ...)` (Chrome 111+, Safari 16.4+, Firefox 113+). For older browsers, the v1.3.0 theme-aware defaults from Shiki still apply.
+
+#### P0-3: Dark mode strategy options
+
+New `darkMode` option — controls how the plugin switches between light and dark themes:
+
+- `strategy: 'media'` (default, backward-compatible) — uses `@media (prefers-color-scheme: dark)`
+- `strategy: 'attribute'` — switches on `html[data-theme="dark"]` (configurable attribute + value)
+- `strategy: 'class'` — switches on `html.dark` (configurable class name)
+- `strategy: 'custom'` — switches on a user-provided CSS selector
+
+Example:
+```js
+perfectCode({
+  darkMode: { strategy: 'class', class: 'dark' },
+})
+```
+
+#### P0-4: CSS containment scope
+
+New `scope` option — prefixes all generated CSS selectors with the given scope:
+
+```js
+perfectCode({
+  scope: '.prose',
+})
+// All selectors become: .prose .pcb { ... }, .prose .pcb__copy { ... }, etc.
+```
+
+Applied to ALL generated CSS including the framework-reset overrides, token-bridge CSS, and dark-mode selectors.
+
+### New exports
+
+- `generateTokenStyles(tokens, scope?)` — generates the derived `--pcb-*` CSS
+- `applyScopeToCss(css, scope)` — prefixes all selectors in a CSS string
+- `generateDarkModeSelector(darkMode, scope?)` — generates the dark-mode CSS selector
+- `generateLightModeSelector(darkMode, scope?)` — generates the light-mode CSS selector
+- `DesignTokens` type — the token bridge input interface
+
+### Verification
+
+- All 1134 pre-existing tests pass (no regressions).
+- New `test-v2-css-architecture.mjs` adds 43 regression tests covering all 4 P0 features.
+- Total: 1177/1177 tests passing.
+
 ## [1.3.3] — 2026-06-20
 
 ### Summary

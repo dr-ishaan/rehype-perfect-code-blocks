@@ -24,12 +24,15 @@ import { runShikiOnRawBlocks, disposeHighlighter, runHighlighterTask } from './s
 import { remarkPreserveCodeMeta } from './remark.js';
 import { wordDiff, hasChanges } from './word-diff.js';
 import type { DiffToken } from './word-diff.js';
+import { generateTokenStyles, applyScopeToCss, generateDarkModeSelector, generateLightModeSelector } from './tokens.js';
+import type { DesignTokens } from './tokens.js';
 import type { PerfectCodeOptions } from './types.js';
 
 export { remarkPreserveCodeMeta };
 export { disposeHighlighter, runHighlighterTask };
 export { wordDiff, hasChanges };
-export type { DiffToken };
+export { generateTokenStyles, applyScopeToCss, generateDarkModeSelector, generateLightModeSelector };
+export type { DiffToken, DesignTokens };
 
 export const rehypePerfectCodeBlocks: Plugin<[PerfectCodeOptions?], Root> =
   (options = {}) => {
@@ -157,6 +160,12 @@ function resolveDefaults(opts: PerfectCodeOptions): Required<PerfectCodeOptions>
     preset: opts.preset ?? 'default',
     injectStyles: opts.injectStyles ?? true,
     theme: opts.theme ?? 'auto',
+    // v2.0.0: CSS Architecture options
+    cssInjection: opts.cssInjection ?? 'inline',
+    cssLayer: opts.cssLayer ?? 'pcb',
+    tokens: opts.tokens ?? (undefined as unknown as NonNullable<typeof opts.tokens>),
+    darkMode: opts.darkMode ?? (undefined as unknown as NonNullable<typeof opts.darkMode>),
+    scope: opts.scope ?? (undefined as unknown as string),
     inline: opts.inline ?? false,
   };
 }

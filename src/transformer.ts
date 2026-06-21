@@ -242,6 +242,11 @@ export function rehypePerfectCodeBlocks(userOptions: PerfectCodeOptions = {}) {
     preset: 'default',
     injectStyles: true,
     theme: 'auto',
+    cssInjection: 'inline' as const,
+    cssLayer: 'pcb',
+    tokens: undefined as unknown as NonNullable<PerfectCodeOptions['tokens']>,
+    darkMode: undefined as unknown as NonNullable<PerfectCodeOptions['darkMode']>,
+    scope: undefined as unknown as string,
     inline: false,
     ...rest,
   };
