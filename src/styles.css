@@ -814,3 +814,12 @@ html.no-js .pcb__copy {
   font-variant-ligatures: none;
   font-feature-settings: "liga" 0, "calt" 0;
 }
+
+/* ---------- v2.3.1: content-visibility for render performance ---------- */
+/* Browser skips rendering off-screen code blocks, dramatically improving
+   page load on docs with many code blocks. contain-intrinsic-size
+   prevents layout shift when blocks scroll into view. */
+:where(.pcb) {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 400px;
+}

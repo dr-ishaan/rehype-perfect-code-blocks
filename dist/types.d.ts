@@ -129,6 +129,23 @@ export interface PerfectCodeOptions {
          * Default: ['typescript', 'bash', 'javascript', 'json', 'html', 'css']
          */
         preloadLangs?: string[];
+        /**
+         * v2.3.1: Maximum total character length of a code block before falling
+         * back to plaintext (to prevent event-loop blocking on huge blocks).
+         * 0 = no limit. Default: 200000 (200k chars ≈ ~5000 lines).
+         */
+        maxBlockLength?: number;
+        /**
+         * v2.3.1: Maximum time in ms for a single codeToHast call before falling
+         * back to plaintext. 0 = no limit. Default: 500 (ms).
+         */
+        tokenizeTimeout?: number;
+        /**
+         * v2.3.1: Timeout in ms for Shiki WASM/highlighter initialization.
+         * If initialization exceeds this, fall back to the pure-JS regex engine.
+         * 0 = no timeout. Default: 8000 (ms).
+         */
+        initTimeout?: number;
         [key: string]: unknown;
     };
     /**

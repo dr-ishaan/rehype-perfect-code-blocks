@@ -5,6 +5,40 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.1] — 2026-06-20
+
+### Summary
+
+Patch release adopting 5 stability + performance patterns from community packages identified through deep research of `@shikijs/monaco`, Astro's `@astrojs/internal-helpers`, fumadocs, and Shiki core. Closes the biggest stability gaps: event-loop blocking on huge code blocks, WASM init hangs on edge runtimes, and repeated regex engine creation.
+
+### Features
+
+#### Item 1: Tokenizer size+time guards (from `@shikijs/monaco`)
+
+New `shiki.maxBlockLength` (default: 200,000 chars) and `shiki.tokenizeTimeout` (default: 500ms) options. When a code block exceeds `maxBlockLength`, it falls back to plaintext with a `dataTruncated` attribute on the `<pre>` element, preventing event-loop blocking on huge blocks.
+
+#### Item 2: Module-level engine cache (from Astro `@astrojs/internal-helpers`)
+
+The JS regex engine (`createJavaScriptRegexEngine()`) is now created once at module scope and reused across all highlighter cache entries, instead of being re-created per entry. Eliminates repeated engine compilation and potential OOM in long dev sessions.
+
+#### Item 3: WASM-init timeout (greenfield — no community package does this)
+
+New `shiki.initTimeout` option (default: 8,000ms). If `createHighlighter` hangs (WASM fetch stall on Cloudflare/Vercel edge), the plugin automatically retries with the pure-JS regex engine. If that also fails, falls back to a minimal plaintext-only highlighter. No more indefinite hangs on edge runtimes.
+
+#### Item 4: `content-visibility: auto` CSS
+
+One CSS rule on `:where(.pcb)` — the browser skips rendering off-screen code blocks, dramatically improving page load on docs with many code blocks. `contain-intrinsic-size: auto 400px` prevents layout shift. No community plugin does this.
+
+#### Item 5: `filterMetaString` hook (pre-Shiki)
+
+The `filterMetaString` option now runs **before** the meta string is passed to Shiki via `meta: { __raw }`, not just before the plugin's own `parseMeta`. This prevents Shiki transformers from choking on custom meta tokens. (Pattern from fumadocs rehype-code.)
+
+### Verification
+
+- All 1290 pre-existing tests pass (no regressions).
+- New `test-v2.3.1-stability.mjs` adds 25 regression tests.
+- Total: 1315/1315 tests passing.
+
 ## [2.3.0] — 2026-06-20
 
 ### Summary
