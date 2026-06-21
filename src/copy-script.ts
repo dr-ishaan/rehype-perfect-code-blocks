@@ -103,6 +103,9 @@ export const COPY_SCRIPT = `
     var finish = function () {
       btn.classList.add('pcb__copy--done');
       if (label) label.textContent = done;
+      // v2.1.0: Update aria-label for screen readers — announce "copied" state
+      var originalAriaLabel = btn.getAttribute('aria-label') || 'Copy code';
+      btn.setAttribute('aria-label', done + ' — ' + originalAriaLabel);
       if (successIconHtml && icon) {
         var tmp = document.createElement('span');
         tmp.innerHTML = successIconHtml;
@@ -116,6 +119,8 @@ export const COPY_SCRIPT = `
       setTimeout(function () {
         btn.classList.remove('pcb__copy--done');
         if (label && originalLabel != null) label.textContent = originalLabel;
+        // v2.1.0: Restore original aria-label after feedback duration
+        btn.setAttribute('aria-label', originalAriaLabel);
         if (originalIconHtml && icon) {
           var tmp2 = document.createElement('span');
           tmp2.innerHTML = originalIconHtml;

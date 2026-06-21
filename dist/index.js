@@ -21,10 +21,14 @@ import { runShikiOnRawBlocks, disposeHighlighter, runHighlighterTask } from './s
 import { remarkPreserveCodeMeta } from './remark.js';
 import { wordDiff, hasChanges } from './word-diff.js';
 import { generateTokenStyles, applyScopeToCss, generateDarkModeSelector, generateLightModeSelector } from './tokens.js';
+import { resolveMathOptions, isMathLanguage, renderMath } from './math.js';
+import { runDevWarnings, warnUnknownLanguage } from './dev-warnings.js';
 export { remarkPreserveCodeMeta };
 export { disposeHighlighter, runHighlighterTask };
 export { wordDiff, hasChanges };
 export { generateTokenStyles, applyScopeToCss, generateDarkModeSelector, generateLightModeSelector };
+export { resolveMathOptions, isMathLanguage, renderMath };
+export { runDevWarnings, warnUnknownLanguage };
 export const rehypePerfectCodeBlocks = (options = {}) => {
     const engine = options.engine ?? 'auto';
     const opts = options;
@@ -151,6 +155,9 @@ function resolveDefaults(opts) {
         tokens: opts.tokens ?? undefined,
         darkMode: opts.darkMode ?? undefined,
         scope: opts.scope ?? undefined,
+        // v2.1.0: P1 features
+        math: opts.math ?? undefined,
+        devWarnings: opts.devWarnings ?? (process.env.NODE_ENV !== 'production'),
         inline: opts.inline ?? false,
     };
 }

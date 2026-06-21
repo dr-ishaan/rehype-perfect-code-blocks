@@ -5,6 +5,92 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] — 2026-06-20
+
+### Summary
+
+Minor release implementing the four P1 items from the v2.0.0 roadmap: Math/LaTeX rendering (KaTeX integration), Lazy Shiki initialization, Dev-mode warnings, and Screen reader copy announcement. No breaking changes — all new features are opt-in with backward-compatible defaults.
+
+### Features
+
+#### P1-1: Math/LaTeX rendering (KaTeX integration)
+
+New `math` option — renders LaTeX at build time via KaTeX (server-side, no client JS needed):
+
+```js
+perfectCode({
+  math: {
+    engine: 'katex',    // 'katex' | 'none' (default: 'none')
+    inline: true,       // render $...$ inline
+    block: true,        // render $$...$$ and ```math blocks
+    injectCss: true,    // inject KaTeX CSS
+    throwOnError: true, // graceful fallback for invalid LaTeX
+  },
+})
+```
+
+- `katex` is an optional peer dependency — if not installed, falls back to rendering the LaTeX source as plain text
+- Handles fenced code blocks with language `math`, `latex`, or `tex` → renders via KaTeX instead of Shiki
+- New `src/math.ts` module with `isMathLanguage()`, `renderMath()`, `resolveMathOptions()` utilities
+- New `src/katex.d.ts` minimal type declaration for the optional `katex` module
+
+#### P1-2: Lazy Shiki initialization
+
+New `shiki.lazy` option — don't load Shiki languages until the first code block is encountered:
+
+```js
+perfectCode({
+  shiki: {
+    lazy: true,         // skip preloading langs; only load what's in each document
+    preloadLangs: ['typescript', 'bash'],  // langs to preload when code blocks exist
+  },
+})
+```
+
+When `lazy: true`, the plugin skips preloading `shiki.langs` and only loads languages actually found in the document. On pages with no code blocks, Shiki is never initialized. Saves ~1MB of bundle on code-free pages.
+
+#### P1-3: Dev-mode warnings
+
+New `devWarnings` option — emits warnings during build/dev for common misconfigurations:
+
+```js
+perfectCode({
+  devWarnings: true,   // default: true in dev (NODE_ENV !== 'production'), false in prod
+})
+```
+
+Warnings include:
+- Unknown language not loaded in Shiki
+- Invalid meta syntax (e.g., `{1,a-5}` instead of `{1,3-5}`)
+- Conflicting options (e.g., `wrap` + `collapseAfter` both enabled)
+- Code block inside raw HTML detected but rehype-raw not installed
+
+Warnings are deduped per unique message to avoid spam. New `src/dev-warnings.ts` module with `runDevWarnings()` and `warnUnknownLanguage()`.
+
+#### P1-4: Screen reader copy announcement
+
+The copy button now dynamically updates its `aria-label` when copy succeeds:
+- Before copy: `aria-label="Copy code"`
+- After copy: `aria-label="copied! — Copy code"` (announced via screen reader)
+- After feedback duration: restores original `aria-label`
+
+Combined with the existing `aria-live="polite"` region (from v1.3.0), screen readers now announce both the button state change AND the "Copied!" text — WCAG 4.1.3 compliant.
+
+### New exports
+
+- `resolveMathOptions(options)` — resolves math config with defaults
+- `isMathLanguage(lang)` — checks if a language is a math language
+- `renderMath(latex, displayMode, options)` — renders LaTeX via KaTeX (or fallback)
+- `runDevWarnings(tree, context)` — runs dev warning checks on a hast tree
+- `warnUnknownLanguage(lang, context)` — warns about an unknown language
+- `MathOptions`, `ResolvedMathOptions` types
+
+### Verification
+
+- All 1177 pre-existing tests pass (no regressions).
+- New `test-v2-phase2.mjs` adds 42 regression tests covering all 4 P1 features.
+- Total: 1219/1219 tests passing.
+
 ## [2.0.0] — 2026-06-20
 
 ### Summary
