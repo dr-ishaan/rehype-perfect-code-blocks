@@ -170,6 +170,13 @@ function resolveDefaults(opts) {
         mermaid: opts.mermaid ?? false,
         csvTables: opts.csvTables ?? false,
         asciiArtLangs: opts.asciiArtLangs ?? ['text', 'plaintext', 'txt', 'ascii', 'plain'],
+        // v2.4.0: Community patterns
+        cssVariablesTheme: opts.cssVariablesTheme ?? false,
+        watchModeCache: opts.watchModeCache ?? true,
+        colorizedBrackets: opts.colorizedBrackets ?? false,
+        classActiveCode: opts.classActiveCode ?? true,
+        shikiSingleton: opts.shikiSingleton ?? false,
+        languageIcons: opts.languageIcons ?? false,
         inline: opts.inline ?? false,
     };
 }

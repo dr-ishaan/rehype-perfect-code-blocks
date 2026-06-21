@@ -257,6 +257,13 @@ export function rehypePerfectCodeBlocks(userOptions: PerfectCodeOptions = {}) {
     mermaid: false,
     csvTables: false,
     asciiArtLangs: ['text', 'plaintext', 'txt', 'ascii', 'plain'] as string[],
+    // v2.4.0: Community patterns
+    cssVariablesTheme: false,
+    watchModeCache: true,
+    colorizedBrackets: false,
+    classActiveCode: true,
+    shikiSingleton: false,
+    languageIcons: false,
     inline: false,
     ...rest,
   };
@@ -529,6 +536,12 @@ async function transformPre(
   // these are NOT Shiki's background/color styles, they're our CSS variable
   // defaults that make the code block legible with any theme.
   const newCode = h('code', codeDataProps, collapsedLines);
+  // v2.4.0 Item 9: classActiveCode — add .has-diff/.has-focus/.has-highlighted/.has-error-level
+  // to the <code> element (not just <pre>) so CSS can target code-level styling.
+  if ((opts as { classActiveCode?: boolean }).classActiveCode !== false && preLevelClasses.size > 0) {
+    const existingCodeClasses = (codeDataProps.className as string[] | undefined) ?? [];
+    codeDataProps.className = [...existingCodeClasses, ...preLevelClasses];
+  }
   const newPreProps: Record<string, unknown> = {};
   if (preLevelClasses.size > 0) {
     newPreProps.className = [...preLevelClasses];
@@ -545,6 +558,14 @@ async function transformPre(
       .join(';');
     if (pcbVars) newPreProps.style = pcbVars;
   }
+  // v2.4.0 Item 11: Language icon injection — add data-icon attribute to <pre>
+  if ((opts as { languageIcons?: boolean }).languageIcons && resolved.language) {
+    const iconSvg = getLanguageIcon(resolved.language);
+    if (iconSvg) {
+      newPreProps['dataIcon'] = iconSvg;
+    }
+  }
+
   // Don't carry over Shiki's tabindex — it causes unwanted focus rings on the
   // inner <pre>. The figure itself is not focusable; only the copy button is.
   const newPre = h('pre', newPreProps, [newCode]);
@@ -1215,6 +1236,35 @@ function h(tag: string, props: Record<string, unknown> = {}, children: ElementCo
 
 function hText(value: string): Text {
   return { type: 'text', value };
+}
+
+/** v2.4.0 Item 11: Get a simple SVG icon for a language (file-type icon). */
+function getLanguageIcon(lang: string): string | null {
+  const icons: Record<string, string> = {
+    js: '<svg viewBox="0 0 16 16" width="16" height="16"><rect width="16" height="16" rx="2" fill="#f7df1e"/><text x="8" y="12" font-size="8" font-family="monospace" fill="#000" text-anchor="middle">JS</text></svg>',
+    ts: '<svg viewBox="0 0 16 16" width="16" height="16"><rect width="16" height="16" rx="2" fill="#3178c6"/><text x="8" y="12" font-size="8" font-family="monospace" fill="#fff" text-anchor="middle">TS</text></svg>',
+    python: '<svg viewBox="0 0 16 16" width="16" height="16"><rect width="16" height="16" rx="2" fill="#3776ab"/><text x="8" y="12" font-size="7" font-family="monospace" fill="#fff" text-anchor="middle">PY</text></svg>',
+    rust: '<svg viewBox="0 0 16 16" width="16" height="16"><rect width="16" height="16" rx="2" fill="#dea584"/><text x="8" y="12" font-size="7" font-family="monospace" fill="#000" text-anchor="middle">RS</text></svg>',
+    go: '<svg viewBox="0 0 16 16" width="16" height="16"><rect width="16" height="16" rx="2" fill="#00add8"/><text x="8" y="12" font-size="8" font-family="monospace" fill="#fff" text-anchor="middle">GO</text></svg>',
+    java: '<svg viewBox="0 0 16 16" width="16" height="16"><rect width="16" height="16" rx="2" fill="#ed8b00"/><text x="8" y="12" font-size="6" font-family="monospace" fill="#fff" text-anchor="middle">JVM</text></svg>',
+    bash: '<svg viewBox="0 0 16 16" width="16" height="16"><rect width="16" height="16" rx="2" fill="#4eaa25"/><text x="8" y="12" font-size="7" font-family="monospace" fill="#fff" text-anchor="middle">$_</text></svg>',
+    html: '<svg viewBox="0 0 16 16" width="16" height="16"><rect width="16" height="16" rx="2" fill="#e34c26"/><text x="8" y="12" font-size="6" font-family="monospace" fill="#fff" text-anchor="middle">HTML</text></svg>',
+    css: '<svg viewBox="0 0 16 16" width="16" height="16"><rect width="16" height="16" rx="2" fill="#1572b6"/><text x="8" y="12" font-size="6" font-family="monospace" fill="#fff" text-anchor="middle">CSS</text></svg>',
+    json: '<svg viewBox="0 0 16 16" width="16" height="16"><rect width="16" height="16" rx="2" fill="#cbcb41"/><text x="8" y="12" font-size="7" font-family="monospace" fill="#000" text-anchor="middle">{}</text></svg>',
+  };
+  return icons[lang.toLowerCase()] ?? null;
+}
+
+/** v2.4.0 Item 7: Watch-mode cache — hash for content-based cache key. */
+const _watchCache = new Map<string, unknown>();
+
+function hashBlock(lang: string, code: string, theme: string, meta: string): string {
+  let h = 0;
+  const str = `${lang}|${code}|${theme}|${meta}`;
+  for (let i = 0; i < str.length; i++) {
+    h = ((h << 5) - h + str.charCodeAt(i)) | 0;
+  }
+  return String(h);
 }
 
 /** v2.2.0: Strip an annotation notation from all text nodes in a line element. */

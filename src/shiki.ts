@@ -20,6 +20,18 @@ import type { PerfectCodeOptions } from './types.js';
 import { computeThemeAwareDefaults } from './color-utils.js';
 import { isMathLanguage, renderMath, resolveMathOptions, MATH_LANGS } from './math.js';
 import { isMermaidLanguage, renderMermaid, isCsvLanguage, buildCsvTable } from './diagrams.js';
+// v2.4.0 Item 8: Colorized brackets (optional peer dep)
+let _transformerColorizedBrackets: ((opts?: never) => unknown) | null | undefined;
+async function getColorizedBracketsTransformer() {
+  if (_transformerColorizedBrackets !== undefined) return _transformerColorizedBrackets;
+  try {
+    const mod = await import('@shikijs/colorized-brackets');
+    _transformerColorizedBrackets = mod.transformerColorizedBrackets as (opts?: never) => unknown;
+  } catch {
+    _transformerColorizedBrackets = null;
+  }
+  return _transformerColorizedBrackets;
+}
 import {
   transformerNotationDiff,
   transformerNotationFocus,
@@ -159,13 +171,34 @@ async function getHighlighter(
   langs: string[],
   userGetHighlighter?: (opts: { themes: string[]; langs: string[] }) => Promise<unknown>,
   regexEngine?: 'oniguruma' | 'javascript',
-  initTimeout?: number
+  initTimeout?: number,
+  useSingleton?: boolean
 ): Promise<ShikiHighlighter> {
   // Filter out langs that aren't bundled with Shiki to avoid synchronous
   // throws inside `createHighlighter`. We use a try/catch around the
   // bundle lookup via `bundledLanguages`.
   const safeLangs = filterBundledLangs(langs);
-  const cacheKey = `${themeKeys.join(',')}|${[...safeLangs].sort().join(',')}|${regexEngine ?? 'onig'}`;
+  const cacheKey = `${themeKeys.join(',')}|${[...safeLangs].sort().join(',')}|${regexEngine ?? 'onig'}|${useSingleton ? 's' : 'c'}`;
+
+  // v2.4.0 Item 10: Singleton highlighter for edge runtimes
+  if (useSingleton) {
+    try {
+      const shiki = await import('shiki');
+      const singletonOpts: Record<string, unknown> = {
+        themes: themeKeys,
+        langs: safeLangs.length > 0 ? safeLangs : ['typescript', 'bash', 'javascript', 'json', 'html', 'css'],
+      };
+      if (regexEngine === 'javascript') {
+        const engine = await getJsEngine();
+        if (engine) singletonOpts.engine = engine;
+      }
+      const singleton = await shiki.getSingletonHighlighter(singletonOpts as unknown as Parameters<typeof shiki.getSingletonHighlighter>[0]);
+      return singleton as unknown as ShikiHighlighter;
+    } catch {
+      // Fallback to createHighlighter if singleton fails
+    }
+  }
+
   let promise = highlighterCache.get(cacheKey);
   if (!promise) {
     // Wrap the highlighter creation in the task queue so concurrent
@@ -450,6 +483,14 @@ async function buildTransformers(
     transformers.push(...userTransformers);
   }
 
+  // v2.4.0 Item 8: Colorized brackets (optional, opt-in)
+  if ((opts as { colorizedBrackets?: boolean }).colorizedBrackets) {
+    const colorizedTransformer = await getColorizedBracketsTransformer();
+    if (colorizedTransformer) {
+      transformers.push(colorizedTransformer());
+    }
+  }
+
   return transformers;
 }
 
@@ -626,16 +667,32 @@ export async function runShikiOnRawBlocks(
 
   // Build theme keys — supports single (string), dual ({light,dark}), and
   // multi-theme (Record<string,string> with 3+ entries) for advanced use cases.
+  // v2.4.0 Item 6: When cssVariablesTheme is enabled, use Shiki's
+  // createCssVariablesTheme so ALL token colors are CSS custom properties.
   const themeSpec = opts.shiki.theme;
   let themeKeys: string[];
   let isMultiTheme = false;
-  if (typeof themeSpec === 'string') {
+  let useCssVariablesTheme = false;
+
+  if ((opts as { cssVariablesTheme?: boolean }).cssVariablesTheme) {
+    // Register a CSS-variables theme — token colors become --pcb-token-* vars
+    try {
+      const shiki = await import('shiki');
+      const cssVarsTheme = shiki.createCssVariablesTheme({ variablePrefix: '--pcb-token-' });
+      // Use the CSS-variables theme name
+      themeKeys = ['css-variables'];
+      useCssVariablesTheme = true;
+      // We'll pass the theme via the shikiOpts, not as a pre-loaded theme
+    } catch {
+      // Fallback to standard themes if createCssVariablesTheme isn't available
+      themeKeys = ['github-dark'];
+    }
+  } else if (typeof themeSpec === 'string') {
     themeKeys = [themeSpec];
   } else if (themeSpec && typeof themeSpec === 'object') {
     if ('light' in themeSpec && 'dark' in themeSpec && Object.keys(themeSpec).length === 2) {
       themeKeys = [themeSpec.dark, themeSpec.light];
     } else {
-      // Multi-theme: Record<string, string> with 3+ entries.
       themeKeys = Object.values(themeSpec);
       isMultiTheme = true;
     }
@@ -683,7 +740,8 @@ export async function runShikiOnRawBlocks(
     [...langSet],
     userGetHighlighter,
     opts.shiki.regexEngine,
-    (opts.shiki as { initTimeout?: number }).initTimeout
+    (opts.shiki as { initTimeout?: number }).initTimeout,
+    (opts as { shikiSingleton?: boolean }).shikiSingleton === true
   );
 
   // Lazily load any langs not yet loaded. Shiki's `loadLanguage` throws

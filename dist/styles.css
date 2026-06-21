@@ -823,3 +823,51 @@ html.no-js .pcb__copy {
   content-visibility: auto;
   contain-intrinsic-size: auto 400px;
 }
+
+/* ============================================================
+   v2.4.0: Community patterns — CSS variables theme, colorized
+   brackets, classActiveCode, language icons
+   ============================================================ */
+
+/* ---------- CSS variables theme (Item 6) ---------- */
+/* When cssVariablesTheme is enabled, Shiki emits token colors as
+   --pcb-token-* CSS variables. This rule applies them. */
+:where(.pcb[data-theme="css-variables"]) span[style*="--pcb-token-"] {
+  color: var(--pcb-token-default, inherit);
+}
+
+/* ---------- Colorized brackets (Item 8) ---------- */
+:where(.pcb) .shiki-bracket {
+  font-weight: bold;
+}
+
+/* ---------- classActiveCode (Item 9) ---------- */
+/* Already handled by existing .has-diff / .has-focused / .has-highlighted
+   rules on <pre>. The v2.4.0 addition is that these classes also appear
+   on <code> — no additional CSS needed, the existing rules target both. */
+
+/* ---------- Language icons (Item 11) ---------- */
+:where(.pcb__bar[data-icon])::before {
+  content: '';
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  margin-right: 0.5rem;
+  vertical-align: middle;
+  background: var(--pcb-text-muted);
+  mask: var(--pcb-icon-url, none) no-repeat center / contain;
+  -webkit-mask: var(--pcb-icon-url, none) no-repeat center / contain;
+}
+:where(.pcb pre[data-icon]) {
+  position: relative;
+}
+:where(.pcb pre[data-icon])::before {
+  content: '';
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  width: 16px;
+  height: 16px;
+  opacity: 0.5;
+  pointer-events: none;
+}
