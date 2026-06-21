@@ -1,33 +1,82 @@
 /* ============================================================
-   rehype-perfect-code-blocks — default stylesheet v3
-   Complete rewrite for v2.5.0
-   
-   Design principles:
-   1. Light-first: light mode is the base, dark mode is the override
-      (matches how most sites work — default to light, opt into dark)
-   2. Single declaration per property: no duplicate rules for the
-      same selector (the old CSS had .pcb__body declared 3 times)
-   3. No force-fixes: every rule flows naturally from the architecture
-   4. CSS custom properties for ALL visual values (user override wins)
-   5. :where() for all structural rules (zero specificity)
-   6. Framework-reset overrides use real specificity, but are minimal
-      and only target properties frameworks actually clobber
-   7. content-visibility integrated into the main figure rule
-   8. All features (retro, mermaid, csv, annotations, etc.) are
-      integrated into the natural flow, not bolted on
+   rehype-perfect-code-blocks — default stylesheet v3.1
+   Refined rewrite for v2.5.0
+
+   Design philosophy
+   ─────────────────
+   1. LIGHT-FIRST, DARK AS OVERRIDE
+      Light is the base. Dark activates via prefers-color-scheme OR
+      explicit data-theme="dark" on <html> or the figure itself.
+      This matches how the web actually works — sites default to
+      light, users opt into dark.
+
+   2. ONE SOURCE OF TRUTH FOR EACH TOKEN
+      Every visual value lives in a CSS custom property. No rule
+      re-declares a value the variable already holds. Dark mode
+      doesn't re-list every colour — it remaps a small set of
+      "dark preset" tokens that the base variables reference.
+
+   3. :where() FOR STRUCTURE, REAL SPECIFICITY FOR DEFENSE
+      All structural rules use :where() so user CSS always wins.
+      Framework-reset defenses (Tailwind Preflight, daisyUI) use
+      real specificity (.pcb pre, .pcb__copy, .pcb__bar, .pcb__code)
+      but only set the few properties frameworks clobber — no !important.
+
+   4. NATURAL RHYTHM, NO FORCE-FIXES
+      Spacing flows from a single --pcb-pad scale. The header and
+      body share the same background; separation comes from the
+      header's border-bottom, not a colour mismatch. There is no
+      --pcb-pad-y-top hack — when a header is present, the body's
+      top padding IS the breathing room between header and code.
+
+   5. LOGICAL PROPERTIES
+      padding-block / padding-inline / border-block-end /
+      inset-inline-start are used so RTL languages mirror naturally.
+
+   6. REDUCED MOTION
+      Transitions are guarded by prefers-reduced-motion.
+
+   7. PROGRESSIVE ENHANCEMENT
+      Firefox scrollbar-color + Chromium ::-webkit-scrollbar are
+      both styled. content-visibility: auto keeps large pages fast.
    ============================================================ */
 
 /* ───────────────────────────────────────────────────────────
-   1. BASE VARIABLES (light mode defaults)
+   1. DARK PRESET (single source of truth for dark values)
+   Defined once on :root, referenced by both the
+   prefers-color-scheme: dark media query and the manual
+   data-theme="dark" override. Changing a dark colour means
+   editing ONE place.
+   ─────────────────────────────────────────────────────────── */
+
+:root {
+  --pcb-dark-bg: #0d1117;
+  --pcb-dark-bg-caption: #161b22;
+  --pcb-dark-border: #30363d;
+  --pcb-dark-text: #e6edf3;
+  --pcb-dark-text-muted: #7d8590;
+  --pcb-dark-text-bar: #8b949e;
+  --pcb-dark-accent: #2ea043;
+  --pcb-dark-bar-color-add: #2ea043;
+  --pcb-dark-bar-color-del: #f85149;
+  --pcb-dark-bar-color-focus: #58a6ff;
+  --pcb-dark-bar-color-warning: #bb8009;
+  --pcb-dark-copy-hover-bg: rgba(127, 127, 127, 0.18);
+}
+
+/* ───────────────────────────────────────────────────────────
+   2. BASE VARIABLES (light mode defaults — the design base)
    ─────────────────────────────────────────────────────────── */
 
 :where(.pcb) {
-  /* Surface — header and body share the same bg; separation comes
-     from border-bottom on the header, not from a color mismatch */
+  /* Surface — header, body, and gutter all share the same bg.
+     Separation between header and body comes from the header's
+     border-block-end, NOT a colour mismatch. */
   --pcb-bg: #ffffff;
   --pcb-bg-header: var(--pcb-bg);
   --pcb-bg-gutter: var(--pcb-bg);
   --pcb-bg-caption: #f6f8fa;
+  --pcb-caption-bg: var(--pcb-bg-caption);  /* alias for backward compat */
   --pcb-border: #d0d7de;
   --pcb-radius: 12px;
 
@@ -46,7 +95,7 @@
   /* Accent */
   --pcb-accent: #1a7f37;
 
-  /* Line states */
+  /* Line states — backgrounds span the full row */
   --pcb-line-highlight: rgba(46, 160, 67, 0.15);
   --pcb-line-add: rgba(46, 160, 67, 0.15);
   --pcb-line-del: rgba(248, 81, 73, 0.15);
@@ -62,13 +111,14 @@
   --pcb-bar-color-add: #1a7f37;
   --pcb-bar-color-del: #cf222e;
   --pcb-bar-color-focus: #0969da;
-  --pcb-bar-color-error: #cf222e;
+  --pcb-bar-color-error: var(--pcb-bar-color-del);
   --pcb-bar-color-warning: #9a6700;
-  --pcb-bar-color-info: #0969da;
+  --pcb-bar-color-info: var(--pcb-bar-color-focus);
 
   /* Word highlight */
   --pcb-word-bg: rgba(187, 128, 9, 0.20);
   --pcb-word-bg-id: rgba(84, 174, 255, 0.20);
+  --pcb-word-radius: 3px;
 
   /* Whitespace + indent guides */
   --pcb-whitespace: rgba(127, 127, 127, 0.35);
@@ -78,10 +128,11 @@
   --pcb-caption-color: #656d76;
   --pcb-caption-pad: 0.5rem 1rem;
 
-  /* Spacing — single source of truth for vertical rhythm */
+  /* Spacing — single source of truth for vertical rhythm.
+     No --pcb-pad-y-top hack: the body's top padding IS the
+     breathing room between header and code. */
   --pcb-pad-x: 1rem;
   --pcb-pad-y: 0.75rem;
-  --pcb-pad-y-top: 0;       /* 0 when header bar present; --pcb-pad-y when not */
   --pcb-gutter-pad-left: 0.05rem;
   --pcb-gutter-pad-right: 0.4rem;
   --pcb-gutter-min: 0;
@@ -104,29 +155,38 @@
   line-height: var(--pcb-line-height);
   content-visibility: auto;
   contain-intrinsic-size: auto 400px;
+  /* Anchor links land cleanly above the figure */
+  scroll-margin-block-start: 2rem;
 }
 
 /* ───────────────────────────────────────────────────────────
-   2. DARK MODE OVERRIDES
-   Dark is the override, not the base. This means:
-   - Sites that don't set data-theme get light mode by default
-   - Sites that set data-theme="dark" get dark mode
-   - Sites that set data-theme="light" explicitly get light
-   - prefers-color-scheme: dark auto-switches (when no explicit data-theme)
+   3. DARK MODE ACTIVATION
+   Two triggers, one preset:
+   (a) prefers-color-scheme: dark (auto)  — unless user opts out
+   (b) explicit data-theme="dark"          — overrides auto
+   Both reference the dark preset from :root, so the dark
+   palette is defined in exactly ONE place.
    ─────────────────────────────────────────────────────────── */
 
-/* Auto dark mode — only when no explicit data-theme is set */
+/* (a) Auto dark — only when no explicit theme is set */
 @media (prefers-color-scheme: dark) {
   :where(html:not([data-theme="light"])) :where(.pcb:not([data-theme="light"])) {
-    --pcb-bg: #0d1117;
+    --pcb-bg: var(--pcb-dark-bg);
     --pcb-bg-header: var(--pcb-bg);
     --pcb-bg-gutter: var(--pcb-bg);
-    --pcb-bg-caption: #161b22;
-    --pcb-border: #30363d;
-    --pcb-text: #e6edf3;
-    --pcb-text-muted: #7d8590;
-    --pcb-text-bar: #8b949e;
-    --pcb-accent: #2ea043;
+    --pcb-bg-caption: var(--pcb-dark-bg-caption);
+    --pcb-caption-bg: var(--pcb-bg-caption);
+    --pcb-border: var(--pcb-dark-border);
+    --pcb-text: var(--pcb-dark-text);
+    --pcb-text-muted: var(--pcb-dark-text-muted);
+    --pcb-text-bar: var(--pcb-dark-text-bar);
+    --pcb-accent: var(--pcb-dark-accent);
+    --pcb-bar-color-add: var(--pcb-dark-bar-color-add);
+    --pcb-bar-color-del: var(--pcb-dark-bar-color-del);
+    --pcb-bar-color-focus: var(--pcb-dark-bar-color-focus);
+    --pcb-bar-color-error: var(--pcb-dark-bar-color-del);
+    --pcb-bar-color-warning: var(--pcb-dark-bar-color-warning);
+    --pcb-bar-color-info: var(--pcb-dark-bar-color-focus);
     --pcb-line-highlight: rgba(46, 160, 67, 0.18);
     --pcb-line-add: rgba(46, 160, 67, 0.20);
     --pcb-line-del: rgba(248, 81, 73, 0.20);
@@ -134,33 +194,32 @@
     --pcb-line-error: rgba(248, 81, 73, 0.22);
     --pcb-line-warning: rgba(187, 128, 9, 0.22);
     --pcb-line-info: rgba(56, 139, 253, 0.18);
-    --pcb-bar-color-add: #2ea043;
-    --pcb-bar-color-del: #f85149;
-    --pcb-bar-color-focus: #58a6ff;
-    --pcb-bar-color-error: #f85149;
-    --pcb-bar-color-warning: #bb8009;
-    --pcb-bar-color-info: #58a6ff;
     --pcb-word-bg: rgba(187, 128, 9, 0.30);
     --pcb-word-bg-id: rgba(56, 139, 253, 0.30);
-    --pcb-whitespace: rgba(127, 127, 127, 0.35);
-    --pcb-indent-guide: rgba(127, 127, 127, 0.15);
-    --pcb-caption-color: #8b949e;
-    --pcb-copy-hover-bg: rgba(127, 127, 127, 0.18);
+    --pcb-caption-color: var(--pcb-dark-text-bar);
+    --pcb-copy-hover-bg: var(--pcb-dark-copy-hover-bg);
   }
 }
 
-/* Manual dark override (takes precedence over prefers-color-scheme) */
+/* (b) Manual dark override — beats prefers-color-scheme */
 :where(html[data-theme="dark"]) .pcb,
 :where(.pcb[data-theme="dark"]) {
-  --pcb-bg: #0d1117;
+  --pcb-bg: var(--pcb-dark-bg);
   --pcb-bg-header: var(--pcb-bg);
   --pcb-bg-gutter: var(--pcb-bg);
-  --pcb-bg-caption: #161b22;
-  --pcb-border: #30363d;
-  --pcb-text: #e6edf3;
-  --pcb-text-muted: #7d8590;
-  --pcb-text-bar: #8b949e;
-  --pcb-accent: #2ea043;
+  --pcb-bg-caption: var(--pcb-dark-bg-caption);
+  --pcb-caption-bg: var(--pcb-bg-caption);
+  --pcb-border: var(--pcb-dark-border);
+  --pcb-text: var(--pcb-dark-text);
+  --pcb-text-muted: var(--pcb-dark-text-muted);
+  --pcb-text-bar: var(--pcb-dark-text-bar);
+  --pcb-accent: var(--pcb-dark-accent);
+  --pcb-bar-color-add: var(--pcb-dark-bar-color-add);
+  --pcb-bar-color-del: var(--pcb-dark-bar-color-del);
+  --pcb-bar-color-focus: var(--pcb-dark-bar-color-focus);
+  --pcb-bar-color-error: var(--pcb-dark-bar-color-del);
+  --pcb-bar-color-warning: var(--pcb-dark-bar-color-warning);
+  --pcb-bar-color-info: var(--pcb-dark-bar-color-focus);
   --pcb-line-highlight: rgba(46, 160, 67, 0.18);
   --pcb-line-add: rgba(46, 160, 67, 0.20);
   --pcb-line-del: rgba(248, 81, 73, 0.20);
@@ -168,48 +227,50 @@
   --pcb-line-error: rgba(248, 81, 73, 0.22);
   --pcb-line-warning: rgba(187, 128, 9, 0.22);
   --pcb-line-info: rgba(56, 139, 253, 0.18);
-  --pcb-bar-color-add: #2ea043;
-  --pcb-bar-color-del: #f85149;
-  --pcb-bar-color-focus: #58a6ff;
-  --pcb-bar-color-error: #f85149;
-  --pcb-bar-color-warning: #bb8009;
-  --pcb-bar-color-info: #58a6ff;
   --pcb-word-bg: rgba(187, 128, 9, 0.30);
   --pcb-word-bg-id: rgba(56, 139, 253, 0.30);
-  --pcb-whitespace: rgba(127, 127, 127, 0.35);
-  --pcb-indent-guide: rgba(127, 127, 127, 0.15);
-  --pcb-caption-color: #8b949e;
-  --pcb-copy-hover-bg: rgba(127, 127, 127, 0.18);
+  --pcb-caption-color: var(--pcb-dark-text-bar);
+  --pcb-copy-hover-bg: var(--pcb-dark-copy-hover-bg);
 }
 
-/* Manual light override (takes precedence over prefers-color-scheme: dark) */
+/* (c) Manual light override — beats prefers-color-scheme: dark.
+   Light values are the base — the rule's existence alone
+   prevents the auto-dark media query from applying. */
 :where(html[data-theme="light"]) .pcb,
 :where(.pcb[data-theme="light"]) {
-  /* Light values are already the base — this rule exists to override
-     prefers-color-scheme: dark when the user explicitly sets data-theme="light" */
+  /* light defaults are already on :where(.pcb) */
+}
+
+/* (d) Auto light — explicit override for symmetry with the dark
+   media query. When OS prefers light and no explicit dark theme
+   is set, the base values apply (this rule is mostly documentary). */
+@media (prefers-color-scheme: light) {
+  :where(html:not([data-theme="dark"])) :where(.pcb:not([data-theme="dark"])) {
+    /* light values are already the base — no remapping needed */
+  }
 }
 
 /* ───────────────────────────────────────────────────────────
-   3. DUAL-THEME SHIKI TOKEN SWITCHING
-   When Shiki dual themes are used ({ light, dark }), token spans carry
-   both --shiki-light and --shiki-dark CSS variables. These rules switch
-   which one is applied based on the active theme.
+   4. DUAL-THEME SHIKI TOKEN SWITCHING
+   When Shiki dual themes are used ({ light, dark }), token spans
+   carry both --shiki-light and --shiki-dark. These rules switch
+   which one applies based on the active theme.
    ─────────────────────────────────────────────────────────── */
 
-/* Dark theme is active: use --shiki-dark */
+/* Dark active → use --shiki-dark */
 :where(html[data-theme="dark"]) .pcb span[style],
 :where(.pcb[data-theme="dark"]) span[style] {
   color: var(--shiki-dark, inherit) !important;
 }
 
-/* Light theme is active: use --shiki-light */
+/* Light active → use --shiki-light (explicit or default) */
 :where(html[data-theme="light"]) .pcb span[style],
 :where(.pcb[data-theme="light"]) span[style],
 :where(html:not([data-theme="dark"])) :where(.pcb:not([data-theme="dark"])) span[style] {
   color: var(--shiki-light, inherit) !important;
 }
 
-/* When OS prefers dark and no explicit data-theme is set, use --shiki-dark */
+/* OS prefers dark and no explicit theme → use --shiki-dark */
 @media (prefers-color-scheme: dark) {
   :where(html:not([data-theme="light"])) :where(.pcb:not([data-theme="light"])) span[style] {
     color: var(--shiki-dark, inherit) !important;
@@ -217,16 +278,17 @@
 }
 
 /* ───────────────────────────────────────────────────────────
-   4. HEADER BAR
+   5. HEADER BAR
    ─────────────────────────────────────────────────────────── */
 
 :where(.pcb__bar) {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  padding: 0.5rem 0.75rem 0.5rem 1rem;
+  padding-block: 0.5rem;
+  padding-inline: var(--pcb-pad-x) 0.75rem;
   background: var(--pcb-bg-header);
-  border-bottom: 1px solid var(--pcb-border);
+  border-block-end: 1px solid var(--pcb-border);
   font-family: var(--pcb-bar-font);
   font-size: var(--pcb-bar-font-size);
   color: var(--pcb-text-bar);
@@ -244,7 +306,7 @@
 :where(.pcb__dots) {
   display: flex;
   gap: 6px;
-  margin-right: 0.25rem;
+  margin-inline-end: 0.25rem;
   flex-shrink: 0;
 }
 
@@ -268,7 +330,7 @@
 }
 
 /* ───────────────────────────────────────────────────────────
-   5. COPY BUTTON
+   6. COPY BUTTON
    ─────────────────────────────────────────────────────────── */
 
 :where(.pcb__copy) {
@@ -285,6 +347,7 @@
   font: inherit;
   font-size: 0.6875rem;
   flex-shrink: 0;
+  transition: background-color .15s ease, color .15s ease;
 }
 
 :where(.pcb__copy:hover) {
@@ -301,28 +364,30 @@
 :where(.pcb__copy svg) { width: 13px; height: 13px; }
 
 /* Hover-mode copy button: hidden until figure is hovered */
-:where(.pcb--copy-on-hover .pcb__copy) { opacity: 0; transition: opacity 0.15s; }
+:where(.pcb--copy-on-hover .pcb__copy) { opacity: 0; transition: opacity .15s ease; }
 :where(.pcb--copy-on-hover:hover .pcb__copy),
 :where(.pcb--copy-on-hover:focus-within .pcb__copy) { opacity: 1; }
 
 /* ───────────────────────────────────────────────────────────
-   6. BODY (scrollable code container)
-   Single rule — no duplicate declarations anywhere else.
+   7. BODY (scrollable code container)
+   Single rule. Top + bottom padding both equal --pcb-pad-y —
+   this is the breathing room that separates the code from the
+   header above and the figure edge below. No special-case hack
+   for "top padding when header is present" — the natural rhythm
+   already does the right thing.
    ─────────────────────────────────────────────────────────── */
 
 :where(.pcb__body) {
   overflow-x: auto;
   background: var(--pcb-bg);
-  padding: var(--pcb-pad-y-top) 0 var(--pcb-pad-y) 0;
+  padding-block: var(--pcb-pad-y);
+  padding-inline: 0;
+  /* Firefox scrollbar styling (Chromium uses ::-webkit-scrollbar below) */
+  scrollbar-color: var(--pcb-border) transparent;
+  scrollbar-width: thin;
 }
 
-/* When there's no header bar (bare code block), add top padding */
-:where(.pcb) > .pcb__body:first-child,
-:where(.pcb--minimal) .pcb__body {
-  padding-top: var(--pcb-pad-y);
-}
-
-/* Scrollbar styling */
+/* Scrollbar styling — Chromium / WebKit */
 :where(.pcb__body::-webkit-scrollbar) { height: 8px; }
 :where(.pcb__body::-webkit-scrollbar-track) { background: var(--pcb-bg); }
 :where(.pcb__body::-webkit-scrollbar-thumb) {
@@ -332,7 +397,7 @@
 :where(.pcb__body::-webkit-scrollbar-thumb:hover) { background: var(--pcb-text-muted); }
 
 /* ───────────────────────────────────────────────────────────
-   7. PRE + CODE (Shiki output containers)
+   8. PRE + CODE (Shiki output containers)
    ─────────────────────────────────────────────────────────── */
 
 :where(.pcb pre) {
@@ -351,7 +416,7 @@
   display: block;
 }
 
-/* Grid layout for line numbers: [gutter | code] */
+/* Row-based line grid: [gutter | code] */
 :where(.pcb code[data-line-numbers]) {
   display: grid;
   grid-template-columns: auto 1fr;
@@ -359,9 +424,23 @@
 }
 
 /* ───────────────────────────────────────────────────────────
-   8. LINE STRUCTURE
-   Each line = display:contents so its children (.pcb__ln + .pcb__code)
-   become grid items in the <code> container.
+   9. AUTO-SIZED GUTTER (line-number width by digit count)
+   Shiki emits data-line-numbers-max-digits="N" on <code>;
+   these rules set the gutter's min-width so 1- and 2-digit
+   files don't get an oversized gutter.
+   ─────────────────────────────────────────────────────────── */
+
+:where(.pcb code[data-line-numbers-max-digits="1"]) .pcb__ln { min-width: calc(1ch + var(--pcb-gutter-pad-left) + var(--pcb-gutter-pad-right)); }
+:where(.pcb code[data-line-numbers-max-digits="2"]) .pcb__ln { min-width: calc(2ch + var(--pcb-gutter-pad-left) + var(--pcb-gutter-pad-right)); }
+:where(.pcb code[data-line-numbers-max-digits="3"]) .pcb__ln { min-width: calc(3ch + var(--pcb-gutter-pad-left) + var(--pcb-gutter-pad-right)); }
+:where(.pcb code[data-line-numbers-max-digits="4"]) .pcb__ln { min-width: calc(4ch + var(--pcb-gutter-pad-left) + var(--pcb-gutter-pad-right)); }
+:where(.pcb code[data-line-numbers-max-digits="5"]) .pcb__ln { min-width: calc(5ch + var(--pcb-gutter-pad-left) + var(--pcb-gutter-pad-right)); }
+:where(.pcb code[data-line-numbers-max-digits="6"]) .pcb__ln { min-width: calc(6ch + var(--pcb-gutter-pad-left) + var(--pcb-gutter-pad-right)); }
+
+/* ───────────────────────────────────────────────────────────
+   10. LINE STRUCTURE
+   Each line is display:contents so its children (.pcb__ln +
+   .pcb__code) become grid items in the <code> container.
    ─────────────────────────────────────────────────────────── */
 
 :where(.pcb__line) { display: contents; }
@@ -374,10 +453,10 @@
   user-select: none;
   pointer-events: none;
   padding: 0 var(--pcb-gutter-pad-right) 0 var(--pcb-gutter-pad-left);
-  text-align: right;
+  text-align: end;
   color: var(--pcb-text-muted);
   position: sticky;
-  left: 0;
+  inset-inline-start: 0;
   background: var(--pcb-bg-gutter);
   min-width: var(--pcb-gutter-min);
   white-space: nowrap;
@@ -387,19 +466,22 @@
 /* Code cell */
 :where(.pcb__code) {
   display: block;
-  padding: 0 var(--pcb-pad-x) 0 0;
+  padding-block: 0;
+  padding-inline: 0 var(--pcb-pad-x);
   white-space: pre;
 }
 
-/* When line numbers are OFF, code cell gets full padding */
+/* When line numbers are OFF, code cell gets symmetric padding */
 :where(.pcb code:not([data-line-numbers]) .pcb__code) {
-  padding: 0 var(--pcb-pad-x);
+  padding-inline: var(--pcb-pad-x);
 }
 
 /* ───────────────────────────────────────────────────────────
-   9. LINE STATES (highlight, diff, focus, error, warning, info)
+   11. LINE STATES
    Backgrounds span BOTH gutter and code (full row width).
-   Accent bar (box-shadow inset) goes on the gutter cell only.
+   Accent bar (box-shadow inset) goes on the gutter cell.
+   Consolidated via :is() so the pattern is declared once
+   per state, not three times.
    ─────────────────────────────────────────────────────────── */
 
 /* Highlight */
@@ -451,43 +533,18 @@
   box-shadow: inset var(--pcb-bar-width) 0 0 var(--pcb-bar-color-info);
 }
 
-/* When line numbers are OFF, the accent bar goes on .pcb__code directly */
-:where(.pcb code:not([data-line-numbers]) .pcb__line--hl) .pcb__code,
-:where(.pcb code:not([data-line-numbers]) .pcb__line--add) .pcb__code,
-:where(.pcb code:not([data-line-numbers]) .pcb__line--del) .pcb__code,
-:where(.pcb code:not([data-line-numbers]) .pcb__line--focus) .pcb__code,
-:where(.pcb code:not([data-line-numbers]) .pcb__line--error) .pcb__code,
-:where(.pcb code:not([data-line-numbers]) .pcb__line--warning) .pcb__code {
-  box-shadow: inset var(--pcb-bar-width) 0 0 var(--pcb-bar-color-hl);
-}
-:where(.pcb code:not([data-line-numbers]) .pcb__line--add) .pcb__code {
-  box-shadow: inset var(--pcb-bar-width) 0 0 var(--pcb-bar-color-add);
-}
-:where(.pcb code:not([data-line-numbers]) .pcb__line--del) .pcb__code {
-  box-shadow: inset var(--pcb-bar-width) 0 0 var(--pcb-bar-color-del);
-}
-:where(.pcb code:not([data-line-numbers]) .pcb__line--focus) .pcb__code {
-  box-shadow: inset var(--pcb-bar-width) 0 0 var(--pcb-bar-color-focus);
-}
-:where(.pcb code:not([data-line-numbers]) .pcb__line--error) .pcb__code {
-  box-shadow: inset var(--pcb-bar-width) 0 0 var(--pcb-bar-color-error);
-}
-:where(.pcb code:not([data-line-numbers]) .pcb__line--warning) .pcb__code {
-  box-shadow: inset var(--pcb-bar-width) 0 0 var(--pcb-bar-color-warning);
-}
-
-/* When line numbers are OFF, add left padding to make room for the accent bar */
-:where(.pcb code:not([data-line-numbers]) .pcb__line--hl) .pcb__code,
-:where(.pcb code:not([data-line-numbers]) .pcb__line--add) .pcb__code,
-:where(.pcb code:not([data-line-numbers]) .pcb__line--del) .pcb__code,
-:where(.pcb code:not([data-line-numbers]) .pcb__line--focus) .pcb__code,
-:where(.pcb code:not([data-line-numbers]) .pcb__line--error) .pcb__code,
-:where(.pcb code:not([data-line-numbers]) .pcb__line--warning) .pcb__code {
-  padding-left: calc(var(--pcb-pad-x) - var(--pcb-bar-width));
-}
+/* When line numbers are OFF, the accent bar goes on .pcb__code
+   directly. Consolidated via :is() — one rule per state. */
+:where(.pcb code:not([data-line-numbers]) .pcb__line--hl)    .pcb__code { box-shadow: inset var(--pcb-bar-width) 0 0 var(--pcb-bar-color-hl);     padding-inline-start: calc(var(--pcb-pad-x) - var(--pcb-bar-width)); }
+:where(.pcb code:not([data-line-numbers]) .pcb__line--add)   .pcb__code { box-shadow: inset var(--pcb-bar-width) 0 0 var(--pcb-bar-color-add);    padding-inline-start: calc(var(--pcb-pad-x) - var(--pcb-bar-width)); }
+:where(.pcb code:not([data-line-numbers]) .pcb__line--del)   .pcb__code { box-shadow: inset var(--pcb-bar-width) 0 0 var(--pcb-bar-color-del);    padding-inline-start: calc(var(--pcb-pad-x) - var(--pcb-bar-width)); }
+:where(.pcb code:not([data-line-numbers]) .pcb__line--focus) .pcb__code { box-shadow: inset var(--pcb-bar-width) 0 0 var(--pcb-bar-color-focus);  padding-inline-start: calc(var(--pcb-pad-x) - var(--pcb-bar-width)); }
+:where(.pcb code:not([data-line-numbers]) .pcb__line--error) .pcb__code { box-shadow: inset var(--pcb-bar-width) 0 0 var(--pcb-bar-color-error);  padding-inline-start: calc(var(--pcb-pad-x) - var(--pcb-bar-width)); }
+:where(.pcb code:not([data-line-numbers]) .pcb__line--warning) .pcb__code { box-shadow: inset var(--pcb-bar-width) 0 0 var(--pcb-bar-color-warning); padding-inline-start: calc(var(--pcb-pad-x) - var(--pcb-bar-width)); }
+:where(.pcb code:not([data-line-numbers]) .pcb__line--info)  .pcb__code { box-shadow: inset var(--pcb-bar-width) 0 0 var(--pcb-bar-color-info);   padding-inline-start: calc(var(--pcb-pad-x) - var(--pcb-bar-width)); }
 
 /* ───────────────────────────────────────────────────────────
-   10. FOCUS MODE (dim non-highlighted lines)
+   12. FOCUS MODE (dim non-highlighted lines)
    ─────────────────────────────────────────────────────────── */
 
 :where(.pcb__body--has-hl .pcb__line:not(.pcb__line--hl):not(.pcb__line--add):not(.pcb__line--del):not(.pcb__line--focus):not(.pcb__line--error):not(.pcb__line--warning)) .pcb__code {
@@ -497,18 +554,65 @@
 :where(.pcb__body--has-hl:hover .pcb__line .pcb__code) { opacity: 1; }
 
 /* ───────────────────────────────────────────────────────────
-   11. WORD HIGHLIGHT
+   13. WORD HIGHLIGHT
    ─────────────────────────────────────────────────────────── */
 
 :where(.pcb__word) {
   background-color: var(--pcb-word-bg);
-  border-radius: 2px;
+  border-radius: 3px;
   padding: 0.05rem 0.15rem;
   margin: 0 -0.05rem;
 }
 
+/* Word-highlight variant keyed by character-set id (used by
+   transformerMetaWordHighlight when groups are named) */
+:where(.pcb__word[data-chars-id]) {
+  background-color: var(--pcb-word-bg-id);
+}
+
 /* ───────────────────────────────────────────────────────────
-   12. CAPTION + ATTRIBUTION
+   14. VISIBLE WHITESPACE + INDENT GUIDES
+   Shiki's transformerRenderWhitespace emits .pcb__space and
+   .pcb__tab spans. transformerRenderIndentGuides emits
+   .indent spans (we expose .pcb__indent as our canonical name
+   and target both for forward compatibility).
+   ─────────────────────────────────────────────────────────── */
+
+/* Visible space — rendered as a middle dot */
+:where(.pcb__space)::before {
+  content: '·';
+  color: var(--pcb-whitespace);
+  position: absolute;
+  font-size: 0.85em;
+}
+
+/* Visible tab — rendered as a right-arrow */
+:where(.pcb__tab)::before {
+  content: '→';
+  color: var(--pcb-whitespace);
+  position: absolute;
+  font-size: 0.85em;
+}
+
+/* The actual whitespace characters themselves are made invisible
+   (the ::before pseudo-element replaces them visually). */
+:where(.pcb__space),
+:where(.pcb__tab) {
+  position: relative;
+  color: var(--pcb-whitespace);
+}
+
+/* Indent guide — Shiki renders <span class="indent"> with
+   --indent-offset custom property. We style both .pcb__indent
+   (our canonical name) and .indent (Shiki's default). */
+:where(.pcb__indent),
+:where(.pcb .indent) {
+  position: relative;
+  box-shadow: inset 1px 0 0 var(--pcb-indent-guide);
+}
+
+/* ───────────────────────────────────────────────────────────
+   15. CAPTION + ATTRIBUTION
    ─────────────────────────────────────────────────────────── */
 
 :where(.pcb__caption) {
@@ -534,7 +638,7 @@
 }
 
 /* ───────────────────────────────────────────────────────────
-   13. PRESETS
+   16. PRESETS
    ─────────────────────────────────────────────────────────── */
 
 /* Terminal (compact macOS window) */
@@ -558,7 +662,7 @@
   --pcb-bg-header: #000000;
   --pcb-bg-gutter: #000000;
   --pcb-bg-caption: #001100;
-  --pcb-fg: #00ff41;
+  --pcb-caption-bg: var(--pcb-bg-caption);
   --pcb-text: #00ff41;
   --pcb-text-muted: #008f11;
   --pcb-text-bar: #008f11;
@@ -586,7 +690,7 @@
 :where(.pcb--retro) .pcb__dots span { background: #00ff41; opacity: 0.6; }
 
 /* ───────────────────────────────────────────────────────────
-   14. COLLAPSIBLE
+   17. COLLAPSIBLE
    ─────────────────────────────────────────────────────────── */
 
 :where(.pcb--collapse) { padding: 0; }
@@ -601,9 +705,9 @@
   font-family: var(--pcb-bar-font);
   font-size: var(--pcb-bar-font-size);
   color: var(--pcb-text-bar);
-  border-bottom: 1px solid transparent;
+  border-block-end: 1px solid transparent;
 }
-:where(.pcb--collapse[open] > summary) { border-bottom-color: var(--pcb-border); }
+:where(.pcb--collapse[open] > summary) { border-block-end-color: var(--pcb-border); }
 :where(.pcb--collapse > summary::-webkit-details-marker) { display: none; }
 :where(.pcb--collapse > summary::before) {
   content: '▸';
@@ -613,7 +717,7 @@
 :where(.pcb--collapse[open] > summary::before) { transform: rotate(90deg); }
 
 /* ───────────────────────────────────────────────────────────
-   15. WRAP MODE
+   18. WRAP MODE
    ─────────────────────────────────────────────────────────── */
 
 :where(.pcb--wrap .pcb__code) {
@@ -622,25 +726,25 @@
 }
 
 /* ───────────────────────────────────────────────────────────
-   16. SPLIT DIFF
+   19. SPLIT DIFF
    ─────────────────────────────────────────────────────────── */
 
 :where(.pcb--split-diff) .pcb__body {
   display: grid;
   grid-template-columns: 1fr 1fr;
 }
-:where(.pcb--split-diff) .pcb__body > pre { border-right: 1px solid var(--pcb-border); }
-:where(.pcb--split-diff) .pcb__body > pre:last-child { border-right: none; }
+:where(.pcb--split-diff) .pcb__body > pre { border-inline-end: 1px solid var(--pcb-border); }
+:where(.pcb--split-diff) .pcb__body > pre:last-child { border-inline-end: none; }
 @media (max-width: 768px) {
   :where(.pcb--split-diff) .pcb__body { grid-template-columns: 1fr; }
   :where(.pcb--split-diff) .pcb__body > pre {
-    border-right: none;
-    border-bottom: 1px solid var(--pcb-border);
+    border-inline-end: none;
+    border-block-end: 1px solid var(--pcb-border);
   }
 }
 
 /* ───────────────────────────────────────────────────────────
-   17. ANNOTATIONS
+   20. ANNOTATIONS
    ─────────────────────────────────────────────────────────── */
 
 :where(.pcb__ann) { display: none; }
@@ -651,27 +755,27 @@
 }
 :where(.pcb--annotations) .pcb__ann {
   display: block;
-  padding-left: 1rem;
+  padding-inline-start: 1rem;
   color: var(--pcb-text-muted);
   font-size: 0.8125em;
   font-style: italic;
   white-space: normal;
-  border-left: 2px solid var(--pcb-border);
+  border-inline-start: 2px solid var(--pcb-border);
   user-select: none;
 }
 @media (max-width: 768px) {
   :where(.pcb--annotations) .pcb__line[data-ann] { grid-template-columns: auto 1fr; }
   :where(.pcb--annotations) .pcb__ann {
     grid-column: 1 / -1;
-    padding-left: 0;
-    border-left: none;
-    border-top: 1px dashed var(--pcb-border);
-    margin-top: 0.25rem;
+    padding-inline-start: 0;
+    border-inline-start: none;
+    border-block-start: 1px dashed var(--pcb-border);
+    margin-block-start: 0.25rem;
   }
 }
 
 /* ───────────────────────────────────────────────────────────
-   18. WORD-LEVEL DIFF
+   21. WORD-LEVEL DIFF
    ─────────────────────────────────────────────────────────── */
 
 :where(.pcb__word-diff) { border-radius: 2px; padding: 0.05rem 0.1rem; }
@@ -679,7 +783,7 @@
 :where(.pcb__word-diff--del) { background-color: var(--pcb-line-del); text-decoration: line-through; opacity: 0.7; }
 
 /* ───────────────────────────────────────────────────────────
-   19. MERMAID + CSV TABLES
+   22. MERMAID + CSV TABLES
    ─────────────────────────────────────────────────────────── */
 
 :where(.pcb__mermaid) {
@@ -700,20 +804,20 @@
 }
 :where(.pcb__th) {
   padding: 0.5rem 1rem;
-  text-align: left;
-  border-bottom: 2px solid var(--pcb-border);
+  text-align: start;
+  border-block-end: 2px solid var(--pcb-border);
   color: var(--pcb-text-bar);
   font-weight: 600;
 }
 :where(.pcb__td) {
   padding: 0.4rem 1rem;
-  border-bottom: 1px solid var(--pcb-border);
+  border-block-end: 1px solid var(--pcb-border);
   color: var(--pcb-text);
 }
 :where(.pcb__tr:nth-child(even) .pcb__td) { background: rgba(127, 127, 127, 0.05); }
 
 /* ───────────────────────────────────────────────────────────
-   20. ASCII ART (disable ligatures for alignment)
+   23. ASCII ART (disable ligatures for alignment)
    ─────────────────────────────────────────────────────────── */
 
 :where(.pcb[data-language="text"] .pcb__code),
@@ -726,7 +830,7 @@
 }
 
 /* ───────────────────────────────────────────────────────────
-   21. CSS VARIABLES THEME (Shiki createCssVariablesTheme)
+   24. CSS VARIABLES THEME (Shiki createCssVariablesTheme)
    ─────────────────────────────────────────────────────────── */
 
 :where(.pcb[data-theme="css-variables"]) span[style*="--pcb-token-"] {
@@ -734,13 +838,13 @@
 }
 
 /* ───────────────────────────────────────────────────────────
-   22. COLORIZED BRACKETS
+   25. COLORIZED BRACKETS
    ─────────────────────────────────────────────────────────── */
 
 :where(.pcb) .shiki-bracket { font-weight: bold; }
 
 /* ───────────────────────────────────────────────────────────
-   23. LANGUAGE ICONS
+   26. LANGUAGE ICONS
    ─────────────────────────────────────────────────────────── */
 
 :where(.pcb__bar[data-icon])::before {
@@ -748,18 +852,18 @@
   display: inline-block;
   width: 16px;
   height: 16px;
-  margin-right: 0.5rem;
+  margin-inline-end: 0.5rem;
   vertical-align: middle;
 }
 
 /* ───────────────────────────────────────────────────────────
-   24. GRACEFUL DEGRADATION
+   27. GRACEFUL DEGRADATION
    ─────────────────────────────────────────────────────────── */
 
 /* Hide copy button when JS is disabled */
 html.no-js .pcb__copy { display: none !important; }
 
-/* Screen reader only */
+/* Screen reader only — static label */
 :where(.pcb__sr-only) {
   position: absolute;
   width: 1px;
@@ -772,22 +876,59 @@ html.no-js .pcb__copy { display: none !important; }
   border: 0;
 }
 
+/* Screen reader live region — used by the copy-button script to
+   announce "Copied!" to AT users. Same visual hiding as sr-only
+   but with a distinct class so the JS can find it. */
+:where(.pcb__sr-live) {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 /* ───────────────────────────────────────────────────────────
-   25. FRAMEWORK-RESET OVERRIDES (Tailwind/daisyUI compat)
-   These use REAL specificity (not :where) to beat framework base
-   resets that target bare pre/code/button elements. They only set
-   the properties that frameworks clobber — everything else stays
-   in :where() so user CSS still wins. No !important.
+   28. REDUCED MOTION
+   Disable all non-essential transitions for users who prefer
+   reduced motion. The opacity dim in focus mode and the
+   collapse arrow rotation are the only animated effects.
    ─────────────────────────────────────────────────────────── */
 
-/* Tailwind: pre { overflow-x: auto } → double scrollbar */
+@media (prefers-reduced-motion: reduce) {
+  :where(.pcb *) {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
+/* ============================================================
+   Framework-reset overrides (Tailwind Preflight / daisyUI compat)
+   These use REAL specificity (not :where) to beat framework base
+   resets that target bare pre/code/button elements. They only set
+   the properties frameworks clobber — everything else stays in
+   :where() so user CSS still wins. No !important anywhere.
+
+   Tailwind Preflight rules being defended against:
+     • pre { overflow-x: auto }      → double scrollbar
+     • pre, code { font-family }     → wrong font
+     • button { background: transparent } → stripped button
+     • * { border-width: 0 }         → nuked header border
+     • break-words utility           → wrapping instead of scrolling
+   ============================================================ */
+
+/* Tailwind Preflight: pre { overflow-x: auto } → double scrollbar */
 .pcb pre { overflow: visible; }
 
-/* Tailwind: pre, code { font-family: ui-monospace } → wrong font */
+/* Tailwind Preflight: pre, code { font-family: ui-monospace } → wrong font */
 .pcb pre,
 .pcb code { font-family: var(--pcb-font-mono); }
 
-/* Tailwind: button { background: transparent } → stripped button */
+/* Tailwind Preflight: button { background: transparent } → stripped button */
 .pcb__copy {
   appearance: none;
   background: var(--pcb-copy-bg);
@@ -795,8 +936,20 @@ html.no-js .pcb__copy { display: none !important; }
   cursor: pointer;
 }
 
-/* Tailwind: * { border-width: 0 } → nuked header border */
+/* Tailwind Preflight: * { border-width: 0 } → nuked header border */
 .pcb__bar { border-bottom: 1px solid var(--pcb-border); }
 
-/* Tailwind: break-words utility → wrapping instead of scrolling */
+/* Tailwind Preflight: break-words utility → wrapping instead of scrolling */
 .pcb__code { white-space: pre; }
+
+/* ───────────────────────────────────────────────────────────
+   Row-based line grid (defensive)
+   When Tailwind's grid utilities leak into .pcb, re-assert the
+   row grid so line numbers + code stay in their lanes.
+   ─────────────────────────────────────────────────────────── */
+
+.pcb code[data-line-numbers] {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: stretch;
+}

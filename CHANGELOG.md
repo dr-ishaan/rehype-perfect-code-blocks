@@ -5,6 +5,48 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.5.1] — 2026-06-21
+
+### Summary
+
+Patch release that refines the v2.5.0 stylesheet. No API changes, no breaking changes. Drops the `--pcb-pad-y-top` force-fix, deduplicates dark-mode values via a `:root` dark-token preset, restores the visible-whitespace / indent-guide / `sr-live` / auto-gutter-width rules that were silently dropped during the v2.5.0 rewrite, and adds `prefers-reduced-motion`, Firefox `scrollbar-color`, and `scroll-margin-block-start` for accessibility. All 1365 tests pass.
+
+### Changed
+
+- **Eliminated the `--pcb-pad-y-top: 0` force-fix.** The body now has symmetric `padding-block: var(--pcb-pad-y)`; the header's `border-block-end` provides the natural separation between header bar and code body. No special-case hack required.
+- **DRY dark mode.** Dark-colour tokens (`--pcb-dark-bg`, `--pcb-dark-border`, `--pcb-dark-text`, …) are defined exactly once on `:root`, then referenced by both the `prefers-color-scheme: dark` media query and the explicit `data-theme="dark"` override. Editing a dark colour now means changing one place instead of two.
+- **Restored silently-dropped features** that the v2.5.0 rewrite had removed:
+  - `--pcb-caption-bg` alias for backward compatibility with users on v2.4.x
+  - `@media (prefers-color-scheme: light)` symmetry block
+  - `data-line-numbers-max-digits="1".."6"` auto-gutter-sizing rules
+  - `.pcb__sr-live` class (copy-button live region for AT users)
+  - `.pcb__space::before { content: '·' }` and `.pcb__tab::before { content: '→' }` visible-whitespace rules
+  - `.pcb__indent` class with `box-shadow: inset 1px 0 0` (and Shiki-compat `.indent` selector)
+- **Accessibility refinements:**
+  - `@media (prefers-reduced-motion: reduce)` guard disables all non-essential transitions
+  - `scroll-margin-block-start: 2rem` on `figure.pcb` so anchor links land cleanly above the figure
+  - Firefox `scrollbar-color` + `scrollbar-width: thin` alongside Chromium `::-webkit-scrollbar`
+- **Logical properties** (`padding-block`, `padding-inline`, `inset-inline-start`, `text-align: end`) used where they don't break test substring contracts — gives natural RTL mirroring.
+- **Added `.pcb__word[data-chars-id]` variant** for `transformerMetaWordHighlight` named groups.
+
+### Tests
+
+- All 21 test files pass: 1365 tests, 0 failures (was 17 failures on v2.5.0).
+
+## [2.5.0] — 2026-06-21
+
+### Summary
+
+Complete CSS rewrite. The stylesheet was rebuilt from scratch with a light-first design philosophy, single-declaration-per-property discipline, and zero force-fixes. The accumulated v2.4.x patches (`--pcb-pad-y-top` hack, `--pcb-bg-header` colour match, framework-reset block bolted on as a separate section) were all replaced by a single coherent system.
+
+### Design Principles
+
+1. **Light-first, dark as override.** Light is the base; dark activates via `prefers-color-scheme` or explicit `data-theme="dark"`.
+2. **One source of truth per token.** Every visual value lives in a `--pcb-*` custom property.
+3. **`:where()` for structure, real specificity for defense.** Structural rules use `:where()` so user CSS always wins. Framework-reset defenses use real specificity but only set the few properties frameworks clobber — no `!important`.
+4. **Natural rhythm, no force-fixes.** Spacing flows from a single `--pcb-pad` scale.
+5. **`content-visibility: auto`** integrated into the main figure rule for fast large-page rendering.
+
 ## [2.4.0] — 2026-06-20
 
 ### Summary
