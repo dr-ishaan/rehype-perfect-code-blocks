@@ -101,7 +101,7 @@
 @media (prefers-color-scheme: light) {
   :where(html:not([data-theme="dark"])) :where(.pcb:not([data-theme="dark"])) {
     --pcb-bg: #ffffff;
-    --pcb-bg-header: #f6f8fa;
+    --pcb-bg-header: #ffffff;
     --pcb-bg-gutter: var(--pcb-bg);
     --pcb-border: #d0d7de;
     --pcb-text: #1f2328;
@@ -122,7 +122,7 @@
 :where(html[data-theme="light"]) .pcb,
 :where(.pcb[data-theme="light"]) {
   --pcb-bg: #ffffff;
-  --pcb-bg-header: #f6f8fa;
+  --pcb-bg-header: #ffffff;
   --pcb-bg-gutter: var(--pcb-bg);
   --pcb-border: #d0d7de;
   --pcb-text: #1f2328;

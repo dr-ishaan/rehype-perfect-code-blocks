@@ -1,6 +1,6 @@
 {
   "name": "@dr-ishaan/rehype-perfect-code-blocks",
-  "version": "2.4.1",
+  "version": "2.4.2",
   "description": "Beautiful, configurable code blocks for Astro / MDX / any rehype pipeline. Built on Shiki, inspired by rehype-pretty-code, VitePress, Docusaurus, and Expressive Code.",
   "type": "module",
   "main": "./dist/index.js",
