@@ -247,6 +247,8 @@ export function rehypePerfectCodeBlocks(userOptions: PerfectCodeOptions = {}) {
     tokens: undefined as unknown as NonNullable<PerfectCodeOptions['tokens']>,
     darkMode: undefined as unknown as NonNullable<PerfectCodeOptions['darkMode']>,
     scope: undefined as unknown as string,
+    math: undefined as unknown as NonNullable<PerfectCodeOptions['math']>,
+    devWarnings: process.env.NODE_ENV !== 'production',
     inline: false,
     ...rest,
   };

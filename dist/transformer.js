@@ -234,6 +234,8 @@ export function rehypePerfectCodeBlocks(userOptions = {}) {
         tokens: undefined,
         darkMode: undefined,
         scope: undefined,
+        math: undefined,
+        devWarnings: process.env.NODE_ENV !== 'production',
         inline: false,
         ...rest,
     };

@@ -24,12 +24,17 @@ import { wordDiff, hasChanges } from './word-diff.js';
 import type { DiffToken } from './word-diff.js';
 import { generateTokenStyles, applyScopeToCss, generateDarkModeSelector, generateLightModeSelector } from './tokens.js';
 import type { DesignTokens } from './tokens.js';
+import { resolveMathOptions, isMathLanguage, renderMath } from './math.js';
+import type { MathOptions, ResolvedMathOptions } from './math.js';
+import { runDevWarnings, warnUnknownLanguage } from './dev-warnings.js';
 import type { PerfectCodeOptions } from './types.js';
 export { remarkPreserveCodeMeta };
 export { disposeHighlighter, runHighlighterTask };
 export { wordDiff, hasChanges };
 export { generateTokenStyles, applyScopeToCss, generateDarkModeSelector, generateLightModeSelector };
-export type { DiffToken, DesignTokens };
+export { resolveMathOptions, isMathLanguage, renderMath };
+export { runDevWarnings, warnUnknownLanguage };
+export type { DiffToken, DesignTokens, MathOptions, ResolvedMathOptions };
 export declare const rehypePerfectCodeBlocks: Plugin<[PerfectCodeOptions?], Root>;
 export default rehypePerfectCodeBlocks;
 //# sourceMappingURL=index.d.ts.map

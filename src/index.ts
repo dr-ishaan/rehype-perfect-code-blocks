@@ -26,13 +26,18 @@ import { wordDiff, hasChanges } from './word-diff.js';
 import type { DiffToken } from './word-diff.js';
 import { generateTokenStyles, applyScopeToCss, generateDarkModeSelector, generateLightModeSelector } from './tokens.js';
 import type { DesignTokens } from './tokens.js';
+import { resolveMathOptions, isMathLanguage, renderMath } from './math.js';
+import type { MathOptions, ResolvedMathOptions } from './math.js';
+import { runDevWarnings, warnUnknownLanguage } from './dev-warnings.js';
 import type { PerfectCodeOptions } from './types.js';
 
 export { remarkPreserveCodeMeta };
 export { disposeHighlighter, runHighlighterTask };
 export { wordDiff, hasChanges };
 export { generateTokenStyles, applyScopeToCss, generateDarkModeSelector, generateLightModeSelector };
-export type { DiffToken, DesignTokens };
+export { resolveMathOptions, isMathLanguage, renderMath };
+export { runDevWarnings, warnUnknownLanguage };
+export type { DiffToken, DesignTokens, MathOptions, ResolvedMathOptions };
 
 export const rehypePerfectCodeBlocks: Plugin<[PerfectCodeOptions?], Root> =
   (options = {}) => {
@@ -166,6 +171,9 @@ function resolveDefaults(opts: PerfectCodeOptions): Required<PerfectCodeOptions>
     tokens: opts.tokens ?? (undefined as unknown as NonNullable<typeof opts.tokens>),
     darkMode: opts.darkMode ?? (undefined as unknown as NonNullable<typeof opts.darkMode>),
     scope: opts.scope ?? (undefined as unknown as string),
+    // v2.1.0: P1 features
+    math: opts.math ?? (undefined as unknown as NonNullable<typeof opts.math>),
+    devWarnings: opts.devWarnings ?? (process.env.NODE_ENV !== 'production'),
     inline: opts.inline ?? false,
   };
 }

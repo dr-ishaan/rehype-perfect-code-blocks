@@ -114,6 +114,21 @@ export interface PerfectCodeOptions {
             themes: string[];
             langs: string[];
         }) => Promise<unknown>;
+        /**
+         * v2.1.0: Lazy initialization — don't load Shiki until the first code block
+         * is encountered. On pages with no code blocks, Shiki (and its WASM engine)
+         * is never loaded, saving ~1MB of bundle.
+         *
+         * Default: false (Shiki initializes eagerly, same as v1.x/v2.0)
+         */
+        lazy?: boolean;
+        /**
+         * v2.1.0: Languages to preload when lazy is true. Only loaded if the
+         * document contains at least one code block.
+         *
+         * Default: ['typescript', 'bash', 'javascript', 'json', 'html', 'css']
+         */
+        preloadLangs?: string[];
         [key: string]: unknown;
     };
     /**
@@ -474,6 +489,44 @@ export interface PerfectCodeOptions {
      * Default: `undefined` (no scoping; CSS applies everywhere)
      */
     scope?: string;
+    /**
+     * Math/LaTeX rendering via KaTeX. When enabled, the plugin intercepts:
+     *   - Inline math: `$...$` in text (when `math.inline` is true)
+     *   - Block math: `$$...$$` blocks (when `math.block` is true)
+     *   - Fenced code blocks with language `math`, `latex`, or `tex`
+     *
+     * KaTeX renders at build time (server-side) — no client-side JS needed.
+     * The KaTeX CSS + fonts must be loaded on the client (the plugin injects
+     * a `<link>` to KaTeX CSS if `math.injectCss` is true).
+     *
+     * `katex` must be installed: `npm install katex`
+     *
+     * Default: `undefined` (no math rendering; `$...$` renders as literal text)
+     */
+    math?: {
+        /** Math engine. 'katex' renders via KaTeX (must be installed). Default: 'none' */
+        engine?: 'katex' | 'none';
+        /** Render inline `$...$` math. Default: true */
+        inline?: boolean;
+        /** Render block `$$...$$` and ```math blocks. Default: true */
+        block?: boolean;
+        /** Inject KaTeX CSS alongside plugin CSS. Default: true */
+        injectCss?: boolean;
+        /** Don't crash on invalid LaTeX — render the source as-is. Default: true */
+        throwOnError?: boolean;
+        /** Allow non-standard LaTeX commands. Default: false */
+        strict?: boolean | 'ignore' | 'error' | 'warn';
+    };
+    /**
+     * Emit warnings to the logger during build/dev for common misconfigurations:
+     *   - Unknown language not loaded in Shiki
+     *   - Invalid meta syntax (e.g., `{1,a-5}` instead of `{1,3-5}`)
+     *   - Conflicting options (e.g., `wrap` + `collapseAfter` both enabled)
+     *   - Code block inside raw HTML detected but rehype-raw not installed
+     *
+     * Default: true in development (when `NODE_ENV !== 'production'`), false in production.
+     */
+    devWarnings?: boolean;
     /** Also style inline `code` cosmetically (no tokenization). Default: false */
     inline?: boolean;
 }

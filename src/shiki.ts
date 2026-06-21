@@ -18,6 +18,7 @@ import { fromHtml } from 'hast-util-from-html';
 import { visit } from 'unist-util-visit';
 import type { PerfectCodeOptions } from './types.js';
 import { computeThemeAwareDefaults } from './color-utils.js';
+import { isMathLanguage, renderMath, resolveMathOptions, MATH_LANGS } from './math.js';
 import {
   transformerNotationDiff,
   transformerNotationFocus,
@@ -447,6 +448,50 @@ export async function runShikiOnRawBlocks(
 
   if (targets.length === 0) return;
 
+  // v2.1.0: Handle math language blocks — render via KaTeX instead of Shiki.
+  const mathOpts = resolveMathOptions(opts.math as Record<string, unknown> | undefined);
+  if (mathOpts.engine === 'katex' && mathOpts.block) {
+    const mathTargets: Element[] = [];
+    const codeTargets: Element[] = [];
+    for (const pre of targets) {
+      const code = pre.children.find(
+        (c): c is Element => c.type === 'element' && c.tagName === 'code'
+      );
+      if (!code) { codeTargets.push(pre); continue; }
+      const cls = (code.properties?.className as string[] | undefined) ?? [];
+      const langClass = cls.find((c) => c.startsWith('language-'));
+      const lang = langClass ? langClass.replace('language-', '') : '';
+      if (isMathLanguage(lang)) {
+        mathTargets.push(pre);
+      } else {
+        codeTargets.push(pre);
+      }
+    }
+
+    // Render math blocks via KaTeX
+    for (const pre of mathTargets) {
+      const code = pre.children.find(
+        (c): c is Element => c.type === 'element' && c.tagName === 'code'
+      );
+      if (!code) continue;
+      const text = extractText(code).replace(/\r\n?/g, '\n').trim();
+      const { html, isKatex } = await renderMath(text, true, mathOpts);
+      // Replace the <pre> with rendered math
+      const mathDiv: Element = {
+        type: 'element',
+        tagName: 'div',
+        properties: { className: ['pcb__math', isKatex ? 'pcb__math--katex' : 'pcb__math--fallback'] },
+        children: [{ type: 'text', value: html }],
+      };
+      Object.assign(pre, mathDiv);
+    }
+
+    // Only process non-math targets with Shiki
+    targets.splice(0, targets.length, ...codeTargets);
+  }
+
+  if (targets.length === 0) return;
+
   // Build theme keys — supports single (string), dual ({light,dark}), and
   // multi-theme (Record<string,string> with 3+ entries) for advanced use cases.
   const themeSpec = opts.shiki.theme;
@@ -473,8 +518,16 @@ export async function runShikiOnRawBlocks(
   // (javascript, typescript, python). This matches Shiki's own case-
   // insensitive behavior in codeToHast/codeToHtml, and matches what every
   // other CommonMark renderer accepts. See issue #12.
+  //
+  // v2.1.0: When shiki.lazy is true, don't preload the user's `langs` list —
+  // only load languages that are actually in this document. This avoids
+  // loading grammars for pages that only use 1-2 languages out of a
+  // configured set of 20+. The lazy-load path below will load them on demand.
+  const isLazy = (opts.shiki as { lazy?: boolean }).lazy === true;
   const langSet = new Set<string>(
-    (opts.shiki.langs ?? []).map((l) => l.toLowerCase())
+    isLazy
+      ? []  // Lazy: don't preload anything — document-specific langs added below
+      : (opts.shiki.langs ?? []).map((l) => l.toLowerCase())
   );
   for (const pre of targets) {
     const code = pre.children.find(
