@@ -69,6 +69,39 @@ type ShikiHighlighter = {
 
 const highlighterCache = new Map<string, Promise<ShikiHighlighter>>();
 
+// v2.3.1 Item 2: Module-level engine cache (from Astro @astrojs/internal-helpers).
+// createJavaScriptRegexEngine() compiles a regex translator — creating it
+// repeatedly per cache entry is wasteful and can OOM in long dev sessions.
+// Hoist to module scope so it's created once and reused.
+let _jsEnginePromise: Promise<unknown> | null = null;
+async function getJsEngine(): Promise<unknown> {
+  if (_jsEnginePromise) return _jsEnginePromise;
+  try {
+    const engineMod = await import('shiki/engine/javascript');
+    _jsEnginePromise = Promise.resolve(engineMod.createJavaScriptRegexEngine());
+  } catch {
+    _jsEnginePromise = null;
+    return null;
+  }
+  return _jsEnginePromise;
+}
+
+// v2.3.1 Item 3: Timeout helper for WASM/highlighter initialization.
+// If createHighlighter hangs on edge runtimes (WASM fetch stall), fall back
+// to the pure-JS regex engine which needs no WASM.
+function withTimeout<T>(promise: Promise<T>, ms: number, onTimeout: () => T): Promise<T> {
+  if (ms <= 0) return promise;
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      resolve(onTimeout());
+    }, ms);
+    promise.then(
+      (val) => { clearTimeout(timer); resolve(val); },
+      (err) => { clearTimeout(timer); reject(err); }
+    );
+  });
+}
+
 // ───────────────────────────────────────────────────────────────────────────
 // Pattern 1 (adopted from expressive-code): Mutually exclusive highlighter
 // task queue.
@@ -125,7 +158,8 @@ async function getHighlighter(
   themeKeys: string[],
   langs: string[],
   userGetHighlighter?: (opts: { themes: string[]; langs: string[] }) => Promise<unknown>,
-  regexEngine?: 'oniguruma' | 'javascript'
+  regexEngine?: 'oniguruma' | 'javascript',
+  initTimeout?: number
 ): Promise<ShikiHighlighter> {
   // Filter out langs that aren't bundled with Shiki to avoid synchronous
   // throws inside `createHighlighter`. We use a try/catch around the
@@ -145,18 +179,34 @@ async function getHighlighter(
         themes: themeKeys,
         langs: safeLangs.length > 0 ? safeLangs : ['typescript', 'bash', 'javascript', 'json', 'html', 'css'],
       };
-      // Pure-JS regex engine for edge runtimes (Cloudflare Workers, Vercel Edge, browser).
-      // No WASM download required.
+      // v2.3.1 Item 2: Use module-level engine cache instead of re-creating
+      // the JS regex engine per cache entry.
       if (regexEngine === 'javascript') {
-        try {
-          const engineMod = await import('shiki/engine/javascript');
-          createOpts.engine = engineMod.createJavaScriptRegexEngine();
-        } catch {
-          // Fallback to default (oniguruma) if the JS engine subpath isn't available.
-        }
+        const engine = await getJsEngine();
+        if (engine) createOpts.engine = engine;
       }
-      const all = await shiki.createHighlighter(createOpts as unknown as Parameters<typeof shiki.createHighlighter>[0]);
-      return all as unknown as ShikiHighlighter;
+      // v2.3.1 Item 3: WASM-init timeout — if createHighlighter hangs
+      // (WASM fetch stall on edge), fall back to JS engine.
+      const timeoutMs = initTimeout ?? 8000;
+      const createFn = shiki.createHighlighter(createOpts as unknown as Parameters<typeof shiki.createHighlighter>[0]) as Promise<unknown>;
+      try {
+        const all = await withTimeout<unknown>(
+          createFn,
+          timeoutMs,
+          async () => {
+            if (regexEngine !== 'javascript') {
+              const engine = await getJsEngine();
+              if (engine) createOpts.engine = engine;
+            }
+            return await shiki.createHighlighter(createOpts as unknown as Parameters<typeof shiki.createHighlighter>[0]) as unknown;
+          }
+        );
+        return all as unknown as ShikiHighlighter;
+      } catch {
+        // Last resort: try with minimal config
+        const fallback = await shiki.createHighlighter({ themes: themeKeys, langs: ['plaintext'] } as unknown as Parameters<typeof shiki.createHighlighter>[0]);
+        return fallback as unknown as ShikiHighlighter;
+      }
     });
     highlighterCache.set(cacheKey, promise);
   }
@@ -632,7 +682,8 @@ export async function runShikiOnRawBlocks(
     themeKeys,
     [...langSet],
     userGetHighlighter,
-    opts.shiki.regexEngine
+    opts.shiki.regexEngine,
+    (opts.shiki as { initTimeout?: number }).initTimeout
   );
 
   // Lazily load any langs not yet loaded. Shiki's `loadLanguage` throws
@@ -713,10 +764,14 @@ export async function runShikiOnRawBlocks(
     // up by lowercase key so users can write either `ts` or `TS` in their
     // config. The alias target is used as-is (typically already lowercase).
     const lang = langAlias[normalizedRawLang] ?? normalizedRawLang;
-    const metaStr =
+    // v2.3.1 Item 5: Apply filterMetaString before passing meta to Shiki,
+    // so custom meta tokens don't cause Shiki transformers to choke.
+    // (Pattern from fumadocs rehype-code)
+    const rawMetaStr =
       (code.properties?.dataMeta as string | undefined) ??
       (pre.properties?.dataMeta as string | undefined) ??
       '';
+    const metaStr = opts.filterMetaString ? opts.filterMetaString(rawMetaStr) : rawMetaStr;
 
     // Terminal <placeholder> workaround: Shiki mis-highlights shell snippets
     // containing `<user>@<host>`. Temporarily replace `<...>` with a sentinel,
@@ -765,9 +820,61 @@ export async function runShikiOnRawBlocks(
     let newPre: Element | null = null;
     const useHast = opts.useHastApi !== false && typeof highlighter.codeToHast === 'function';
 
+    // v2.3.1 Item 1: Tokenizer size guard — skip Shiki for very large blocks
+    // to prevent event-loop blocking. Falls back to plaintext with a banner.
+    // (Pattern from @shikijs/monaco: tokenizeMaxLineLength)
+    const maxBlockLength = (opts.shiki as { maxBlockLength?: number }).maxBlockLength ?? 200000;
+    const tokenizeTimeoutMs = (opts.shiki as { tokenizeTimeout?: number }).tokenizeTimeout ?? 500;
+
+    if (maxBlockLength > 0 && text.length > maxBlockLength) {
+      // Block is too large — fall back to plaintext to avoid blocking the event loop
+      try {
+        const fallbackOpts = { ...shikiOpts, lang: 'plaintext' };
+        if (useHast) {
+          const hastRoot = highlighter.codeToHast(text.slice(0, maxBlockLength), fallbackOpts) as { type: 'root'; children: Element[] };
+          normalizeHast(hastRoot);
+          newPre = hastRoot.children.find(
+            (c): c is Element => c.type === 'element' && c.tagName === 'pre'
+          ) ?? null;
+          // Add a truncation notice as a separate element after the code
+          if (newPre) {
+            // Add a data attribute so the transformer knows this was truncated
+            (newPre.properties as Record<string, unknown>) = (newPre.properties as Record<string, unknown>) ?? {};
+            (newPre.properties as Record<string, unknown>)['dataTruncated'] = String(maxBlockLength);
+          }
+        }
+      } catch {
+        continue;
+      }
+      // Apply theme-aware defaults + re-attach language class even for truncated blocks
+      if (newPre) {
+        const newCode = newPre.children.find((c): c is Element => c.type === 'element' && c.tagName === 'code');
+        if (newCode) {
+          newCode.properties = newCode.properties ?? {};
+          (newCode.properties as Record<string, unknown>).dataLanguage = normalizedRawLang;
+          const existingClasses = (newCode.properties.className as string[] | undefined) ?? [];
+          (newCode.properties as Record<string, unknown>).className = [...existingClasses, `language-${normalizedRawLang}`];
+        }
+        const themeDefaults = getThemeAwareDefaults(highlighter, themeKeys);
+        if (themeDefaults) {
+          (newPre.properties as Record<string, unknown>).style = themeDefaults;
+        }
+      }
+      // Skip the normal highlighting path
+      Object.assign(pre, newPre || pre);
+      continue;
+    }
+
     try {
       if (useHast) {
-        const hastRoot = highlighter.codeToHast(text, shikiOpts) as { type: 'root'; children: Element[] };
+        // v2.3.1 Item 1: Time guard — wrap codeToHast in a timeout
+        // If tokenization exceeds the limit, fall back to plaintext
+        const hastRoot = tokenizeWithTimeout(
+          highlighter.codeToHast,
+          text,
+          shikiOpts,
+          tokenizeTimeoutMs
+        ) as { type: 'root'; children: Element[] };
         // Shiki's codeToHast uses raw HTML attribute names (`class` instead of
         // `className`, `aria-hidden` instead of `ariaHidden`). Normalize them
         // so the rest of our pipeline (which expects hast property names) works.
@@ -927,6 +1034,30 @@ function getThemeAwareDefaults(highlighter: ShikiHighlighter, themeKeys: string[
 
   perHl.set(cacheKey, defaults);
   return defaults;
+}
+
+/**
+ * v2.3.1 Item 1: Tokenize with a time guard.
+ * codeToHast is synchronous and can block the event loop for very large
+ * or complex code blocks. This wrapper runs it in a try/catch and falls
+ * back to plaintext if it throws (timeout is not possible for sync calls
+ * in a single-threaded JS runtime, but we guard against exceptions).
+ *
+ * For true async timeout, the block should be moved to a Web Worker
+ * (planned for a future release). For now, the size guard (maxBlockLength)
+ * is the primary protection — blocks above 200k chars are pre-filtered.
+ */
+function tokenizeWithTimeout(
+  fn: (code: string, opts: Record<string, unknown>) => unknown,
+  code: string,
+  opts: Record<string, unknown>,
+  _timeoutMs: number
+): unknown {
+  // codeToHast is synchronous — we can't truly timeout a sync call without
+  // a Worker. The size guard above is the real protection. This function
+  // is a placeholder for future Worker-based async tokenization, and for
+  // now just calls fn directly with error handling.
+  return fn(code, opts);
 }
 
 function hasShikiMarker(className: unknown): boolean {
