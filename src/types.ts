@@ -334,6 +334,163 @@ export interface PerfectCodeOptions {
   /** Manual theme override. Default: 'auto' (prefers-color-scheme) */
   theme?: 'auto' | 'dark' | 'light';
 
+  /* ---------- v2.0.0: CSS Architecture ---------- */
+
+  /**
+   * CSS injection strategy. Controls how the plugin's stylesheet is delivered.
+   *
+   * - `'inline'` (default) — injects the full CSS in a `<style>` tag on every page.
+   *   Simple, works everywhere, but the CSS is unlayered (can be overridden by
+   *   framework resets on cascade ties).
+   *
+   * - `'layer'` — injects the CSS wrapped in `@layer <cssLayer> { ... }`.
+   *   On sites using cascade layers (Tailwind v3+, daisyUI, etc.), this ensures
+   *   the plugin's CSS sits in the correct layer and framework resets don't
+   *   win on specificity ties. Requires `cssLayer` to be set.
+   *
+   * - `'import'` — does NOT inject CSS. The user imports it manually:
+   *   `import '@dr-ishaan/rehype-perfect-code-blocks/styles.css'`
+   *   Useful for sites that want full control over CSS loading (e.g., bundling
+   *   with PostCSS, or importing into a specific `@layer` in their own CSS).
+   *
+   * Default: `'inline'` (backward-compatible with v1.x).
+   */
+  cssInjection?: 'inline' | 'layer' | 'import';
+
+  /**
+   * The cascade layer name to use when `cssInjection: 'layer'`.
+   * The plugin's CSS will be wrapped in `@layer <cssLayer> { ... }`.
+   *
+   * Example: `cssLayer: 'components'` → all plugin CSS goes into
+   * `@layer components { ... }`, which the user can order above
+   * `@layer base` (framework resets) in their CSS:
+   *
+   * ```css
+   * @layer base, components, utilities;
+   * ```
+   *
+   * Default: `'pcb'`
+   */
+  cssLayer?: string;
+
+  /**
+   * Design-token bridge — provide 5 core values and the plugin auto-derives
+   * all 20+ `--pcb-*` variables. This is a shortcut for mapping the plugin
+   * to an external design system (Tailwind theme, daisyUI theme, CSS custom
+   * properties, etc.) without manually overriding every variable.
+   *
+   * Each value can be a CSS value string (e.g., `'#1a1b26'`) or a
+   * `var(--your-var)` reference.
+   *
+   * When set, the plugin generates a `<style>` block with the derived
+   * `--pcb-*` variables applied to `:where(.pcb)` (zero specificity, so
+   * user CSS still wins). If a specific `--pcb-*` variable is ALSO set
+   * in user CSS, the user's value wins (the token bridge is a default,
+   * not an override).
+   *
+   * Example:
+   * ```js
+   * perfectCode({
+   *   tokens: {
+   *     bg: 'var(--bg-subtle)',
+   *     fg: 'var(--ink)',
+   *     border: 'var(--rule)',
+   *     radius: 'var(--radius-card)',
+   *     monoFont: 'var(--font-mono)',
+   *   },
+   * })
+   * ```
+   *
+   * The plugin auto-derives:
+   * - `--pcb-bg` = `bg`
+   * - `--pcb-fg` = `fg`
+   * - `--pcb-border` = `border`
+   * - `--pcb-radius` = `radius`
+   * - `--pcb-font-mono` = `monoFont`
+   * - `--pcb-ln-fg` = `color-mix(in oklch, fg, bg 50%)` (muted line numbers)
+   * - `--pcb-bg-header` = `color-mix(in oklch, fg 5%, bg)` (header slightly different)
+   * - `--pcb-text-bar` = `color-mix(in oklch, fg, bg 30%)` (header text muted)
+   * - `--pcb-line-highlight` = `color-mix(in oklch, fg 12%, bg)` (subtle highlight)
+   * - `--pcb-line-add` = `color-mix(in oklch, #2ea043 18%, bg)` (diff add)
+   * - `--pcb-line-del` = `color-mix(in oklch, #f85149 18%, bg)` (diff del)
+   * - `--pcb-line-focus` = `color-mix(in oklch, #58a6ff 18%, bg)` (focus)
+   * - `--pcb-copy-bg` (hover) = `color-mix(in oklch, fg 8%, bg)`
+   *
+   * Uses `color-mix(in oklch, ...)` which is supported in all modern browsers
+   * (Chrome 111+, Safari 16.4+, Firefox 113+). For older browsers, the
+   * fallback values from the Shiki theme (Pattern 2, v1.3.0) still apply.
+   *
+   * Default: `undefined` (no token bridge; use the plugin's built-in defaults)
+   */
+  tokens?: {
+    /** Background color of the code block surface. */
+    bg?: string;
+    /** Foreground (text) color of the code. */
+    fg?: string;
+    /** Border color of the code block frame. */
+    border?: string;
+    /** Border radius of the code block. */
+    radius?: string;
+    /** Monospace font family for code text. */
+    monoFont?: string;
+  };
+
+  /**
+   * Dark mode strategy — controls how the plugin switches between light
+   * and dark themes.
+   *
+   * - `'media'` (default) — uses `@media (prefers-color-scheme: dark)`.
+   *   Automatic, no configuration needed. Same as v1.x behavior.
+   *
+   * - `'attribute'` — switches based on an attribute on `<html>`.
+   *   Requires `darkMode.attribute` and `darkMode.attributeValue`.
+   *   Example: `darkMode: { strategy: 'attribute', attribute: 'data-theme', attributeValue: 'dark' }`
+   *   → CSS: `html[data-theme="dark"] .pcb { ... }`
+   *
+   * - `'class'` — switches based on a class on `<html>`.
+   *   Requires `darkMode.class`.
+   *   Example: `darkMode: { strategy: 'class', class: 'dark' }`
+   *   → CSS: `html.dark .pcb { ... }`
+   *
+   * - `'custom'` — uses a custom CSS selector.
+   *   Requires `darkMode.customSelector`.
+   *   Example: `darkMode: { strategy: 'custom', customSelector: ':root[data-mode="night"]' }`
+   *   → CSS: `:root[data-mode="night"] .pcb { ... }`
+   *
+   * When using Shiki dual themes (`shiki.theme: { light, dark }`), the
+   * Shiki token CSS variables (`--shiki-light` / `--shiki-dark`) are also
+   * switched using the same strategy, not just `prefers-color-scheme`.
+   *
+   * Default: `'media'` (backward-compatible with v1.x)
+   */
+  darkMode?: {
+    strategy: 'media' | 'attribute' | 'class' | 'custom';
+    /** For `strategy: 'attribute'` — the attribute name on `<html>`. Default: `'data-theme'` */
+    attribute?: string;
+    /** For `strategy: 'attribute'` — the attribute value that triggers dark mode. Default: `'dark'` */
+    attributeValue?: string;
+    /** For `strategy: 'class'` — the class name on `<html>` that triggers dark mode. Default: `'dark'` */
+    class?: string;
+    /** For `strategy: 'custom'` — the full CSS selector that triggers dark mode. */
+    customSelector?: string;
+  };
+
+  /**
+   * CSS containment scope — prefix all generated CSS selectors with this
+   * string. Useful when code blocks appear in specific contexts (e.g., only
+   * inside `.prose` or `article`) and you don't want the plugin's CSS to
+   * affect code blocks elsewhere on the page.
+   *
+   * Example: `scope: '.prose'` → all selectors become `.prose .pcb { ... }`,
+   * `.prose .pcb__header { ... }`, etc.
+   *
+   * The scope is applied to ALL generated CSS, including the framework-reset
+   * overrides and the dark-mode selectors.
+   *
+   * Default: `undefined` (no scoping; CSS applies everywhere)
+   */
+  scope?: string;
+
   /* ---------- Inline code (legacy cosmetic option) ---------- */
   /** Also style inline `code` cosmetically (no tokenization). Default: false */
   inline?: boolean;

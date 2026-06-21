@@ -229,6 +229,11 @@ export function rehypePerfectCodeBlocks(userOptions = {}) {
         preset: 'default',
         injectStyles: true,
         theme: 'auto',
+        cssInjection: 'inline',
+        cssLayer: 'pcb',
+        tokens: undefined,
+        darkMode: undefined,
+        scope: undefined,
         inline: false,
         ...rest,
     };

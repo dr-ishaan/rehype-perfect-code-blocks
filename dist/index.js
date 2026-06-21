@@ -20,9 +20,11 @@ import { rehypePerfectCodeBlocks as transformer } from './transformer.js';
 import { runShikiOnRawBlocks, disposeHighlighter, runHighlighterTask } from './shiki.js';
 import { remarkPreserveCodeMeta } from './remark.js';
 import { wordDiff, hasChanges } from './word-diff.js';
+import { generateTokenStyles, applyScopeToCss, generateDarkModeSelector, generateLightModeSelector } from './tokens.js';
 export { remarkPreserveCodeMeta };
 export { disposeHighlighter, runHighlighterTask };
 export { wordDiff, hasChanges };
+export { generateTokenStyles, applyScopeToCss, generateDarkModeSelector, generateLightModeSelector };
 export const rehypePerfectCodeBlocks = (options = {}) => {
     const engine = options.engine ?? 'auto';
     const opts = options;
@@ -143,6 +145,12 @@ function resolveDefaults(opts) {
         preset: opts.preset ?? 'default',
         injectStyles: opts.injectStyles ?? true,
         theme: opts.theme ?? 'auto',
+        // v2.0.0: CSS Architecture options
+        cssInjection: opts.cssInjection ?? 'inline',
+        cssLayer: opts.cssLayer ?? 'pcb',
+        tokens: opts.tokens ?? undefined,
+        darkMode: opts.darkMode ?? undefined,
+        scope: opts.scope ?? undefined,
         inline: opts.inline ?? false,
     };
 }

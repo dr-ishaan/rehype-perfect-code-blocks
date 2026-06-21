@@ -22,11 +22,14 @@ import { disposeHighlighter, runHighlighterTask } from './shiki.js';
 import { remarkPreserveCodeMeta } from './remark.js';
 import { wordDiff, hasChanges } from './word-diff.js';
 import type { DiffToken } from './word-diff.js';
+import { generateTokenStyles, applyScopeToCss, generateDarkModeSelector, generateLightModeSelector } from './tokens.js';
+import type { DesignTokens } from './tokens.js';
 import type { PerfectCodeOptions } from './types.js';
 export { remarkPreserveCodeMeta };
 export { disposeHighlighter, runHighlighterTask };
 export { wordDiff, hasChanges };
-export type { DiffToken };
+export { generateTokenStyles, applyScopeToCss, generateDarkModeSelector, generateLightModeSelector };
+export type { DiffToken, DesignTokens };
 export declare const rehypePerfectCodeBlocks: Plugin<[PerfectCodeOptions?], Root>;
 export default rehypePerfectCodeBlocks;
 //# sourceMappingURL=index.d.ts.map

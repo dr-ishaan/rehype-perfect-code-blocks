@@ -19,6 +19,7 @@
 import { rehypePerfectCodeBlocks } from './index.js';
 import { remarkPreserveCodeMeta } from './remark.js';
 import { COPY_SCRIPT } from './copy-script.js';
+import { generateTokenStyles, applyScopeToCss } from './tokens.js';
 import { readFileSync } from 'node:fs';
 import { readdirSync, writeFileSync, readFileSync as readFile } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -112,9 +113,23 @@ export default function perfectCode(options = {}) {
                 // so they pass a strict Content-Security-Policy.
                 const nonceAttr = options.cspNonce ? ` nonce="${escapeAttr(options.cspNonce)}"` : '';
                 // CSS
-                if (options.injectStyles !== false) {
-                    const css = loadCss();
+                if (options.injectStyles !== false && options.cssInjection !== 'import') {
+                    let css = loadCss();
                     if (css) {
+                        // v2.0.0: Apply CSS scope if configured
+                        if (options.scope) {
+                            css = applyScopeToCss(css, options.scope);
+                        }
+                        // v2.0.0: Generate token-bridge CSS (derived --pcb-* variables)
+                        const tokenCss = generateTokenStyles(options.tokens ?? {}, options.scope);
+                        if (tokenCss) {
+                            css = css + '\n' + tokenCss;
+                        }
+                        // v2.0.0: Wrap in @layer if configured
+                        const layerName = options.cssLayer ?? 'pcb';
+                        if (options.cssInjection === 'layer') {
+                            css = `@layer ${layerName} {\n${css}\n}`;
+                        }
                         injections.push(`<style data-pcb${nonceAttr}>${css}</style>`);
                     }
                 }
