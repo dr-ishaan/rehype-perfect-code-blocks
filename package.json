@@ -1,6 +1,6 @@
 {
   "name": "@dr-ishaan/rehype-perfect-code-blocks",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "Beautiful, configurable code blocks for Astro / MDX / any rehype pipeline. Built on Shiki, inspired by rehype-pretty-code, VitePress, Docusaurus, and Expressive Code.",
   "type": "module",
   "main": "./dist/index.js",
@@ -51,7 +51,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json && cp src/styles.css dist/styles.css",
     "dev": "tsc -p tsconfig.json --watch",
-    "test": "node test-meta-parser.mjs && node test-dom-structure.mjs && node test-options.mjs && node test-notations.mjs && node test-security.mjs && node test-integration.mjs && node test-regression.mjs && node test-css.mjs && node test-edge-cases.mjs && node stress-tests.mjs && node new-feature-tests.mjs && node test-issue-12.mjs && node test-issue-11.mjs && node test-architecture-patterns.mjs && node test-copy-button-fix.mjs && node test-tailwind-compat.mjs && node test-v2-css-architecture.mjs && node test-v2-phase2.mjs",
+    "test": "node test-meta-parser.mjs && node test-dom-structure.mjs && node test-options.mjs && node test-notations.mjs && node test-security.mjs && node test-integration.mjs && node test-regression.mjs && node test-css.mjs && node test-edge-cases.mjs && node stress-tests.mjs && node new-feature-tests.mjs && node test-issue-12.mjs && node test-issue-11.mjs && node test-architecture-patterns.mjs && node test-copy-button-fix.mjs && node test-tailwind-compat.mjs && node test-v2-css-architecture.mjs && node test-v2-phase2.mjs && node test-v2-phase3.mjs",
     "prepublishOnly": "npm run build && npm test",
     "prepack": "npm run build"
   },

@@ -527,6 +527,56 @@ export interface PerfectCodeOptions {
      * Default: true in development (when `NODE_ENV !== 'production'`), false in production.
      */
     devWarnings?: boolean;
+    /**
+     * Side-by-side diff view. When enabled, adjacent `+`/`-` diff line pairs
+     * are rendered in a two-column layout (Before | After) with synchronized
+     * scrolling, instead of the default unified diff view.
+     *
+     * On mobile (viewport < 768px), the columns stack vertically.
+     *
+     * Default: `'unified'` (backward-compatible with v1.x/v2.0/v2.1)
+     */
+    diffMode?: 'unified' | 'split';
+    /**
+     * Line annotations — margin notes attached to specific code lines.
+     *
+     * Use `// [!ann: "explanation"]` notation inside code to annotate a line.
+     * The annotation appears on the right side of the code block, connected
+     * to the annotated line with a subtle connector line. On mobile,
+     * annotations appear inline below the annotated line.
+     *
+     * Example:
+     * ```ts
+     * const attention = Q.dot(K.T) / Math.sqrt(d)  // [!ann: "Scaled dot-product"]
+     * const weights = softmax(attention)            // [!ann: "Normalized weights"]
+     * ```
+     *
+     * Default: `false` (opt-in)
+     */
+    annotations?: boolean;
+    /**
+     * Code attribution — structured metadata for code blocks.
+     *
+     * When enabled, the plugin parses `author`, `year`, and `source` attributes
+     * from the fence meta string and renders them as a footer below the code block:
+     *
+     * ````markdown
+     * ```ts title="perceptron.ts" author="Rosenblatt" year="1958" source="Principles of Neurodynamics"
+     * const output = stepFunction(inputs.dot(weights))
+     * ```
+     * ````
+     *
+     * Renders:
+     * ```
+     * ┌─ perceptron.ts ──────────────────┐
+     * │ const output = stepFunction(...)  │
+     * └───────────────────────────────────┘
+     *   Rosenblatt (1958). Principles of Neurodynamics.
+     * ```
+     *
+     * Default: `false` (opt-in; when disabled, author/year/source meta is silently ignored)
+     */
+    attribution?: boolean;
     /** Also style inline `code` cosmetically (no tokenization). Default: false */
     inline?: boolean;
 }
@@ -561,6 +611,9 @@ export interface ParsedMeta {
         from: number;
         to: number;
     }[];
+    author: string | null;
+    year: string | null;
+    source: string | null;
     flags: {
         wrap: boolean | null;
         lineNumbers: boolean | null;

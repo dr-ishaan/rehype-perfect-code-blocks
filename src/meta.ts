@@ -57,6 +57,9 @@ export function parseMeta(meta: string | undefined): ParsedMeta {
     wordHighlights: [],
     lineNumbersStart: null,
     collapseRanges: [],
+    author: null,
+    year: null,
+    source: null,
     flags: {
       wrap: null,
       lineNumbers: null,
@@ -82,6 +85,20 @@ export function parseMeta(meta: string | undefined): ParsedMeta {
     // caption="..." or caption='...'
     if (tok.startsWith('caption=')) {
       result.caption = unquote(tok.slice('caption='.length));
+      continue;
+    }
+
+    // v2.2.0: Attribution metadata — author="...", year="...", source="..."
+    if (tok.startsWith('author=')) {
+      result.author = unquote(tok.slice('author='.length));
+      continue;
+    }
+    if (tok.startsWith('year=')) {
+      result.year = unquote(tok.slice('year='.length));
+      continue;
+    }
+    if (tok.startsWith('source=')) {
+      result.source = unquote(tok.slice('source='.length));
       continue;
     }
 
@@ -182,8 +199,8 @@ function tokenize(input: string): string[] {
     while (i < input.length && /\s/.test(input[i])) i++;
     if (i >= input.length) break;
 
-    // Quoted key="value" or key='value' (title=, caption=, collapse=)
-    if (/^(?:title|caption|collapse)=$/.test(input.slice(i).match(/^[a-z]+=/i)?.[0] ?? '')) {
+    // Quoted key="value" or key='value' (title=, caption=, collapse=, author=, year=, source=)
+    if (/^(?:title|caption|collapse|author|year|source)=$/.test(input.slice(i).match(/^[a-z]+=/i)?.[0] ?? '')) {
       const eq = input.indexOf('=', i);
       let j = eq + 1;
       const quote = input[j];
