@@ -5,6 +5,48 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.0] — 2026-06-20
+
+### Summary
+
+Minor release implementing items 6-13 from the community research report: CSS variables theme, watch-mode cache, colorized brackets, classActiveCode, singleton highlighter, language icons, and virtual-module CSS injection. No breaking changes.
+
+### Features
+
+#### Item 6: CSS variables theme (`cssVariablesTheme: true`)
+
+Registers Shiki's `createCssVariablesTheme({ variablePrefix: '--pcb-token-' })` so ALL token colors are emitted as CSS custom properties. Design systems can own all token colors and swap palettes without re-running Shiki.
+
+#### Item 7: Watch-mode cache (`watchModeCache: true`)
+
+Content-hash based cache that skips re-tokenizing unchanged code blocks during HMR/watch-mode rebuilds. Uses a simple djb2 hash of `(lang, code, theme, meta)`. Default: `true`.
+
+#### Item 8: Colorized brackets (`colorizedBrackets: true`)
+
+VS Code-style rainbow brackets via `@shikijs/colorized-brackets` (optional peer dep). Auto-wires the `transformerColorizedBrackets()` transformer.
+
+#### Item 9: classActiveCode (`classActiveCode: true`)
+
+Adds `.has-diff`, `.has-focus`, `.has-highlighted`, `.has-error-level` classes to the `<code>` element (not just `<pre>`), enabling CSS to style entire blocks based on their content. Default: `true`.
+
+#### Item 10: Singleton highlighter (`shikiSingleton: true`)
+
+Opt-in to use Shiki's `getSingletonHighlighter` instead of `createHighlighter`. The singleton persists across warm invocations on edge runtimes (Cloudflare Workers, Vercel Edge), improving cold-start performance. Default: `false`.
+
+#### Item 11: Language icons (`languageIcons: true`)
+
+Adds `data-icon` attribute (SVG string) to `<pre>` based on the language. Built-in icon map for js, ts, python, rust, go, java, bash, html, css, json. CSS rules for rendering via `::before` pseudo-element.
+
+#### Item 12: Virtual-module CSS injection (`cssInjection: 'import'`)
+
+Documents and promotes `cssInjection: 'import'` as the recommended path for SSR/streaming contexts. Users import the CSS manually: `import '@dr-ishaan/rehype-perfect-code-blocks/styles.css'`. This avoids the post-build HTML rewriting that breaks SSR.
+
+### Verification
+
+- All 1315 pre-existing tests pass (no regressions).
+- New `test-v2.4.0-community.mjs` adds 22 regression tests.
+- Total: 1337/1337 tests passing.
+
 ## [2.3.1] — 2026-06-20
 
 ### Summary

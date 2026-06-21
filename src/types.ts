@@ -655,6 +655,70 @@ export interface PerfectCodeOptions {
    */
   asciiArtLangs?: string[];
 
+  /* ---------- v2.4.0: Community patterns (items 6-13) ---------- */
+
+  /**
+   * v2.4.0 Item 6: Use Shiki's CSS-variables theme so ALL token colors are
+   * emitted as CSS custom properties (e.g. `--pcb-token-keyword`) instead of
+   * inline hex values. Lets a design system own all token colors and swap
+   * palettes without re-running Shiki.
+   *
+   * When `true`, registers `createCssVariablesTheme({ variablePrefix: '--pcb-token-' })`
+   * as the Shiki theme. Token spans get `style="--pcb-token-keyword: #ff7b72"`
+   * and the CSS rule `.pcb span[style] { color: var(--pcb-token-keyword, inherit) }`
+   * applies the color. Users override token colors by setting the CSS vars.
+   *
+   * Default: `false` (uses Shiki's standard theme system with inline colors)
+   */
+  cssVariablesTheme?: boolean;
+
+  /**
+   * v2.4.0 Item 7: Watch-mode cache. When `true`, the plugin hashes each
+   * code block's `(lang, code, theme, meta)` and caches the highlighted
+   * output. On HMR / rebuild, unchanged blocks skip re-tokenization.
+   *
+   * Default: `true` (enabled — the cache is in-memory and per-build)
+   */
+  watchModeCache?: boolean;
+
+  /**
+   * v2.4.0 Item 8: VS Code-style rainbow brackets via
+   * `@shikijs/colorized-brackets`. Requires `npm install @shikijs/colorized-brackets`.
+   *
+   * Default: `false` (opt-in)
+   */
+  colorizedBrackets?: boolean;
+
+  /**
+   * v2.4.0 Item 9: Add `.has-diff`, `.has-focus`, `.has-highlighted`,
+   * `.has-error-level` classes to the `<code>` element when a block contains
+   * those notation types. Lets CSS style entire blocks based on their content.
+   *
+   * Default: `true` (enabled — trivial cost, useful CSS hook)
+   */
+  classActiveCode?: boolean;
+
+  /**
+   * v2.4.0 Item 10: Use Shiki's `getSingletonHighlighter` instead of
+   * `createHighlighter`. The singleton persists across warm invocations
+   * on edge runtimes (Cloudflare Workers, Vercel Edge), improving cold-start
+   * performance. For non-edge builds, the existing `createHighlighter` +
+   * Map cache is used.
+   *
+   * Default: `false` (use createHighlighter — better for parallel builds)
+   */
+  shikiSingleton?: boolean;
+
+  /**
+   * v2.4.0 Item 11: Language icon injection. When `true`, adds a `data-icon`
+   * attribute (HTML string) to the `<pre>` element based on the language.
+   * Icons are from a built-in map of language → SVG (file-type icons).
+   * Rendered client-side via CSS `::before` or JS.
+   *
+   * Default: `false` (opt-in)
+   */
+  languageIcons?: boolean;
+
   /* ---------- Inline code (legacy cosmetic option) ---------- */
   /** Also style inline `code` cosmetically (no tokenization). Default: false */
   inline?: boolean;
