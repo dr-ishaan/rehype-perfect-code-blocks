@@ -722,3 +722,95 @@ html.no-js .pcb__copy {
   border-top: 1px solid var(--pcb-border);
   font-style: italic;
 }
+
+/* ============================================================
+   v2.3.0: P2 — Retro preset, Mermaid, CSV tables, ASCII art, A11y
+   ============================================================ */
+
+/* ---------- Retro CRT preset ---------- */
+:where(.pcb--retro) {
+  --pcb-bg: #000000;
+  --pcb-fg: #00ff41;
+  --pcb-text-muted: #008f11;
+  --pcb-border: #00ff41;
+  --pcb-bg-header: #001100;
+  --pcb-bg-gutter: #000000;
+  --pcb-radius: 0px;
+  --pcb-font-mono: 'Courier New', 'Lucida Console', monospace;
+  --pcb-bar-font: 'Courier New', monospace;
+  text-shadow: 0 0 2px currentColor, 0 0 4px rgba(0, 255, 65, 0.3);
+}
+:where(.pcb--retro) .pcb__body {
+  position: relative;
+}
+:where(.pcb--retro) .pcb__body::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    rgba(0, 0, 0, 0) 0px,
+    rgba(0, 0, 0, 0) 2px,
+    rgba(0, 0, 0, 0.08) 2px,
+    rgba(0, 0, 0, 0.08) 4px
+  );
+  pointer-events: none;
+}
+:where(.pcb--retro) .pcb__dots span) {
+  background: #00ff41;
+  opacity: 0.6;
+}
+
+/* ---------- Mermaid diagram container ---------- */
+:where(.pcb__mermaid) {
+  padding: 1rem;
+  background: var(--pcb-bg);
+  overflow-x: auto;
+  text-align: center;
+}
+:where(.pcb__mermaid svg) {
+  max-width: 100%;
+  height: auto;
+}
+:where(.pcb__mermaid--error) {
+  color: var(--pcb-text-muted);
+  font-family: var(--pcb-font-mono);
+}
+
+/* ---------- CSV/TSV table ---------- */
+:where(.pcb__csv-table) {
+  padding: 0;
+  background: var(--pcb-bg);
+  overflow-x: auto;
+}
+:where(.pcb__table) {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--pcb-font-mono);
+  font-size: var(--pcb-font-size);
+}
+:where(.pcb__th) {
+  padding: 0.5rem 1rem;
+  text-align: left;
+  border-bottom: 2px solid var(--pcb-border);
+  color: var(--pcb-text-bar);
+  font-weight: 600;
+}
+:where(.pcb__td) {
+  padding: 0.4rem 1rem;
+  border-bottom: 1px solid var(--pcb-border);
+  color: var(--pcb-text);
+}
+:where(.pcb__tr:nth-child(even) .pcb__td) {
+  background: rgba(127, 127, 127, 0.05);
+}
+
+/* ---------- ASCII art: disable ligatures ---------- */
+:where(.pcb[data-language="text"] .pcb__code),
+:where(.pcb[data-language="plaintext"] .pcb__code),
+:where(.pcb[data-language="txt"] .pcb__code),
+:where(.pcb[data-language="ascii"] .pcb__code),
+:where(.pcb[data-language="plain"] .pcb__code) {
+  font-variant-ligatures: none;
+  font-feature-settings: "liga" 0, "calt" 0;
+}

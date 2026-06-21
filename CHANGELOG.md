@@ -5,6 +5,74 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.0] — 2026-06-20
+
+### Summary
+
+Minor release implementing P2 items: Mermaid diagram rendering, CSV/TSV table rendering, ASCII art preservation, Retro CRT preset, accessibility improvements (line numbers + diff aria-labels), and exported CLASSES constant. No breaking changes.
+
+### Features
+
+#### Mermaid diagram rendering (`mermaid: true`)
+
+Render ```` ```mermaid ```` blocks as SVG diagrams via mermaid.js (build-time, optional peer dep):
+
+```js
+perfectCode({ mermaid: true })
+```
+
+#### CSV/TSV table rendering (`csvTables: true`)
+
+Render ```` ```csv ```` / ```` ```tsv ```` blocks as styled HTML tables:
+
+```js
+perfectCode({ csvTables: true })
+```
+
+First row becomes `<thead>`, remaining rows in `<tbody>` with alternating row colors.
+
+#### ASCII art preservation
+
+Disables ligatures (`font-variant-ligatures: none`, `font-feature-settings: "liga" 0`) for `text`, `plaintext`, `txt`, `ascii`, `plain` languages so ASCII art alignment is maintained. Configurable via `asciiArtLangs` option.
+
+#### Retro CRT preset (`preset: 'retro'`)
+
+Green-on-black monospace with CRT scanline effect — for historical computing content:
+
+```js
+perfectCode({ preset: 'retro' })
+```
+
+Features: `#00ff41` text glow, repeating scanline gradient overlay, `Courier New` font, zero border radius, green traffic-light dots.
+
+#### Accessibility improvements
+
+- **Line numbers**: `aria-label="Line N"` on each `.pcb__ln` span (screen readers announce line numbers)
+- **Diff lines**: `aria-label="Added line"` / `aria-label="Removed line"` on diff line spans (WCAG 1.3.1)
+
+#### Exported CLASSES constant
+
+```ts
+import { CLASSES } from '@dr-ishaan/rehype-perfect-code-blocks';
+// CLASSES.COPY_BUTTON = 'pcb__copy'
+// CLASSES.LINE_HIGHLIGHT = 'pcb__line--hl'
+// CLASSES.PRESET_RETRO = 'pcb--retro'
+// ... 40+ class name constants
+```
+
+### New exports
+
+- `CLASSES` — object with 40+ CSS class name constants
+- `isMermaidLanguage(lang)`, `isCsvLanguage(lang)` — language detection
+- `parseCsv(text, delimiter)`, `buildCsvTable(text, delimiter)` — CSV parsing
+- `renderMermaid(source)` — Mermaid SVG rendering
+
+### Verification
+
+- All 1254 pre-existing tests pass (no regressions).
+- New `test-v2-p2.mjs` adds 36 regression tests.
+- Total: 1290/1290 tests passing.
+
 ## [2.2.0] — 2026-06-20
 
 ### Summary

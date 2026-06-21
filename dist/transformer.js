@@ -240,6 +240,10 @@ export function rehypePerfectCodeBlocks(userOptions = {}) {
         diffMode: 'unified',
         annotations: false,
         attribution: false,
+        // v2.3.0: P2
+        mermaid: false,
+        csvTables: false,
+        asciiArtLangs: ['text', 'plaintext', 'txt', 'ascii', 'plain'],
         inline: false,
         ...rest,
     };
@@ -944,7 +948,7 @@ function toLineSpans(code, resolved, opts) {
         // Build the row: [gutter-cell?, code-cell, annotation?]
         const lineChildren = [];
         if (resolved.lineNumbers) {
-            lineChildren.push(h('span', { className: ['pcb__ln'], ariaHidden: true }, [hText(String(lineNumber))]));
+            lineChildren.push(h('span', { className: ['pcb__ln'], ariaHidden: true, 'aria-label': `Line ${lineNumber}` }, [hText(String(lineNumber))]));
         }
         lineChildren.push(h('span', { className: ['pcb__code'] }, [innerWrapper]));
         // v2.2.0: Add annotation cell if this line has an annotation
@@ -954,6 +958,13 @@ function toLineSpans(code, resolved, opts) {
         const lineProps = { className: [...classes] };
         if (annotationText !== null) {
             lineProps['dataAnn'] = annotationText;
+        }
+        // v2.3.0: Add aria-label for diff lines (accessibility)
+        if (classes.has('pcb__line--add')) {
+            lineProps['aria-label'] = 'Added line';
+        }
+        else if (classes.has('pcb__line--del')) {
+            lineProps['aria-label'] = 'Removed line';
         }
         return h('span', lineProps, lineChildren);
     });

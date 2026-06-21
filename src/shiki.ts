@@ -19,6 +19,7 @@ import { visit } from 'unist-util-visit';
 import type { PerfectCodeOptions } from './types.js';
 import { computeThemeAwareDefaults } from './color-utils.js';
 import { isMathLanguage, renderMath, resolveMathOptions, MATH_LANGS } from './math.js';
+import { isMermaidLanguage, renderMermaid, isCsvLanguage, buildCsvTable } from './diagrams.js';
 import {
   transformerNotationDiff,
   transformerNotationFocus,
@@ -488,6 +489,87 @@ export async function runShikiOnRawBlocks(
 
     // Only process non-math targets with Shiki
     targets.splice(0, targets.length, ...codeTargets);
+  }
+
+  // v2.3.0: Handle Mermaid diagram blocks — render as SVG instead of Shiki.
+  if ((opts as { mermaid?: boolean }).mermaid) {
+    const mermaidTargets: Element[] = [];
+    const remainingTargets: Element[] = [];
+    for (const pre of targets) {
+      const code = pre.children.find(
+        (c): c is Element => c.type === 'element' && c.tagName === 'code'
+      );
+      if (!code) { remainingTargets.push(pre); continue; }
+      const cls = (code.properties?.className as string[] | undefined) ?? [];
+      const langClass = cls.find((c) => c.startsWith('language-'));
+      const lang = langClass ? langClass.replace('language-', '') : '';
+      if (isMermaidLanguage(lang)) {
+        mermaidTargets.push(pre);
+      } else {
+        remainingTargets.push(pre);
+      }
+    }
+
+    for (const pre of mermaidTargets) {
+      const code = pre.children.find(
+        (c): c is Element => c.type === 'element' && c.tagName === 'code'
+      );
+      if (!code) continue;
+      const text = extractText(code).replace(/\r\n?/g, '\n').trim();
+      const { svg, isError } = await renderMermaid(text);
+      const mermaidDiv: Element = {
+        type: 'element',
+        tagName: 'div',
+        properties: { className: ['pcb__mermaid', isError ? 'pcb__mermaid--error' : 'pcb__mermaid--rendered'] },
+        children: svg
+          ? [{ type: 'text', value: svg }]
+          : [{ type: 'element', tagName: 'pre', properties: {}, children: [{ type: 'text', value: text }] }],
+      };
+      Object.assign(pre, mermaidDiv);
+    }
+    targets.splice(0, targets.length, ...remainingTargets);
+  }
+
+  // v2.3.0: Handle CSV/TSV table blocks — render as HTML table instead of Shiki.
+  if ((opts as { csvTables?: boolean }).csvTables) {
+    const csvTargets: Element[] = [];
+    const remainingTargets: Element[] = [];
+    for (const pre of targets) {
+      const code = pre.children.find(
+        (c): c is Element => c.type === 'element' && c.tagName === 'code'
+      );
+      if (!code) { remainingTargets.push(pre); continue; }
+      const cls = (code.properties?.className as string[] | undefined) ?? [];
+      const langClass = cls.find((c) => c.startsWith('language-'));
+      const lang = langClass ? langClass.replace('language-', '') : '';
+      if (isCsvLanguage(lang)) {
+        csvTargets.push(pre);
+      } else {
+        remainingTargets.push(pre);
+      }
+    }
+
+    for (const pre of csvTargets) {
+      const code = pre.children.find(
+        (c): c is Element => c.type === 'element' && c.tagName === 'code'
+      );
+      if (!code) continue;
+      const text = extractText(code).replace(/\r\n?/g, '\n').trim();
+      const cls = (code.properties?.className as string[] | undefined) ?? [];
+      const langClass = cls.find((c) => c.startsWith('language-'));
+      const lang = langClass ? langClass.replace('language-', '') : 'csv';
+      const delimiter = lang.toLowerCase() === 'tsv' ? '\t' : ',';
+      const tableEl = buildCsvTable(text, delimiter);
+      // Replace the <pre> with the table wrapped in a div
+      const tableDiv: Element = {
+        type: 'element',
+        tagName: 'div',
+        properties: { className: ['pcb__csv-table'] },
+        children: [tableEl],
+      };
+      Object.assign(pre, tableDiv);
+    }
+    targets.splice(0, targets.length, ...remainingTargets);
   }
 
   if (targets.length === 0) return;
