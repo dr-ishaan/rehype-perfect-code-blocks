@@ -29,6 +29,8 @@ import type { DesignTokens } from './tokens.js';
 import { resolveMathOptions, isMathLanguage, renderMath } from './math.js';
 import type { MathOptions, ResolvedMathOptions } from './math.js';
 import { runDevWarnings, warnUnknownLanguage } from './dev-warnings.js';
+import { isMermaidLanguage, isCsvLanguage, buildCsvTable, parseCsv, renderMermaid } from './diagrams.js';
+import { CLASSES } from './classes.js';
 import type { PerfectCodeOptions } from './types.js';
 
 export { remarkPreserveCodeMeta };
@@ -37,6 +39,8 @@ export { wordDiff, hasChanges };
 export { generateTokenStyles, applyScopeToCss, generateDarkModeSelector, generateLightModeSelector };
 export { resolveMathOptions, isMathLanguage, renderMath };
 export { runDevWarnings, warnUnknownLanguage };
+export { isMermaidLanguage, isCsvLanguage, buildCsvTable, parseCsv, renderMermaid };
+export { CLASSES };
 export type { DiffToken, DesignTokens, MathOptions, ResolvedMathOptions };
 
 export const rehypePerfectCodeBlocks: Plugin<[PerfectCodeOptions?], Root> =
@@ -178,6 +182,10 @@ function resolveDefaults(opts: PerfectCodeOptions): Required<PerfectCodeOptions>
     diffMode: opts.diffMode ?? 'unified',
     annotations: opts.annotations ?? false,
     attribution: opts.attribution ?? false,
+    // v2.3.0: P2
+    mermaid: opts.mermaid ?? false,
+    csvTables: opts.csvTables ?? false,
+    asciiArtLangs: opts.asciiArtLangs ?? ['text', 'plaintext', 'txt', 'ascii', 'plain'],
     inline: opts.inline ?? false,
   };
 }

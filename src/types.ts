@@ -343,7 +343,7 @@ export interface PerfectCodeOptions {
 
   /* ---------- Styling ---------- */
   /** Visual preset. Default: 'default' */
-  preset?: 'default' | 'terminal' | 'minimal';
+  preset?: 'default' | 'terminal' | 'minimal' | 'retro';
   /** Inject the bundled CSS automatically. Set false to ship your own. Default: true */
   injectStyles?: boolean;
   /** Manual theme override. Default: 'auto' (prefers-color-scheme) */
@@ -608,6 +608,35 @@ export interface PerfectCodeOptions {
    * Default: `false` (opt-in; when disabled, author/year/source meta is silently ignored)
    */
   attribution?: boolean;
+
+  /* ---------- v2.3.0: P2 — Diagrams, Tables, ASCII, Frames, A11y ---------- */
+
+  /**
+   * Mermaid diagram rendering. When a fenced code block has language `mermaid`,
+   * render it as an SVG diagram instead of syntax-highlighted code.
+   *
+   * `mermaid` must be installed: `npm install mermaid`
+   *
+   * Default: `false` (mermaid blocks render as plain code)
+   */
+  mermaid?: boolean;
+
+  /**
+   * CSV/TSV table rendering. When a fenced code block has language `csv` or
+   * `tsv`, render it as a styled HTML table instead of code.
+   *
+   * Default: `false` (CSV/TSV blocks render as plain code)
+   */
+  csvTables?: boolean;
+
+  /**
+   * ASCII art preservation. For languages in the list, disable ligatures,
+   * preserve trailing whitespace, and set `font-variant-ligatures: none` to
+   * ensure ASCII art alignment is maintained.
+   *
+   * Default: `['text', 'plaintext', 'txt', 'ascii', 'plain']`
+   */
+  asciiArtLangs?: string[];
 
   /* ---------- Inline code (legacy cosmetic option) ---------- */
   /** Also style inline `code` cosmetically (no tokenization). Default: false */

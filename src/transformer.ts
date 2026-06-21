@@ -253,6 +253,10 @@ export function rehypePerfectCodeBlocks(userOptions: PerfectCodeOptions = {}) {
     diffMode: 'unified' as const,
     annotations: false,
     attribution: false,
+    // v2.3.0: P2
+    mermaid: false,
+    csvTables: false,
+    asciiArtLangs: ['text', 'plaintext', 'txt', 'ascii', 'plain'] as string[],
     inline: false,
     ...rest,
   };
@@ -999,7 +1003,7 @@ function toLineSpans(
     const lineChildren: ElementContent[] = [];
     if (resolved.lineNumbers) {
       lineChildren.push(
-        h('span', { className: ['pcb__ln'], ariaHidden: true }, [hText(String(lineNumber))])
+        h('span', { className: ['pcb__ln'], ariaHidden: true, 'aria-label': `Line ${lineNumber}` }, [hText(String(lineNumber))])
       );
     }
     lineChildren.push(
@@ -1017,6 +1021,13 @@ function toLineSpans(
     if (annotationText !== null) {
       lineProps['dataAnn'] = annotationText;
     }
+    // v2.3.0: Add aria-label for diff lines (accessibility)
+    if (classes.has('pcb__line--add')) {
+      lineProps['aria-label'] = 'Added line';
+    } else if (classes.has('pcb__line--del')) {
+      lineProps['aria-label'] = 'Removed line';
+    }
+
     return h('span', lineProps, lineChildren);
   });
 }
