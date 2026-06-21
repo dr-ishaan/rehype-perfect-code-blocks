@@ -68,10 +68,15 @@
 
   /* Spacing */
   --pcb-pad-x: 1rem;
-  --pcb-pad-y: 1rem;
+  --pcb-pad-y: 0.75rem;
   --pcb-gutter-pad-left: 0.05rem;
   --pcb-gutter-pad-right: 0.4rem;
   --pcb-gutter-min: 0;
+  /* When a header bar is present, reduce the body's top padding to 0
+     because the header bar already provides visual separation via its
+     border-bottom. The body's top padding is only needed when there's
+     no header bar (e.g., code block with no title/lang/copy). */
+  --pcb-pad-y-top: 0;
 
   margin: 1.5rem 0;
   background: var(--pcb-bg);
@@ -360,9 +365,19 @@
 
 /* Vertical padding: applied to the whole <code> via top/bottom padding
    on the first/last line's cells. We use a simpler approach: padding
-   on the <pre> wrapper via the body's first/last child. */
+   on the <pre> wrapper via the body's first/last child.
+   
+   When a header bar (.pcb__bar) is present, the top padding is 0
+   because the header bar's border-bottom provides visual separation.
+   When there's no header bar, we add top padding so the code doesn't
+   touch the top of the figure. */
 :where(.pcb__body) {
-  padding: var(--pcb-pad-y) 0;
+  padding: var(--pcb-pad-y-top, 0) 0 var(--pcb-pad-y) 0;
+}
+/* When there's no header bar before the body, add top padding */
+:where(.pcb) > .pcb__body:first-child,
+:where(.pcb--minimal) .pcb__body {
+  padding-top: var(--pcb-pad-y);
 }
 :where(.pcb__line:first-child .pcb__ln),
 :where(.pcb__line:first-child .pcb__code) {
